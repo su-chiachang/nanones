@@ -2,10 +2,23 @@
 
 #include <string.h>
 
+#ifndef PPU_ALIGN
+#define PPU_ALIGN 1
+#endif
+
+/* Brings the PPU up to the dot at which the CPU is touching it, so register
+ * reads and writes see the right scanline/dot even inside a long instruction. */
+static void ppu_catch_up(Nes *n, uint64_t target) {
+    while (n->ppu_ticked < target) { ppu_tick(&n->ppu); n->ppu_ticked++; }
+}
+
 static uint8_t bus_read(void *ctx, uint16_t addr) {
     Nes *n = ctx;
     if (addr < 0x2000) return n->ram[addr & 0x7FF];
-    if (addr < 0x4000) return ppu_reg_read(&n->ppu, addr);
+    if (addr < 0x4000) {
+        ppu_catch_up(n, n->cpu.access_cycle * 3 + PPU_ALIGN);
+        return ppu_reg_read(&n->ppu, addr);
+    }
     if (addr == 0x4016) {
         uint8_t bit = n->pad_strobe ? (n->buttons & 1) : (n->pad_shift & 1);
         if (!n->pad_strobe) n->pad_shift = (uint8_t)((n->pad_shift >> 1) | 0x80);
@@ -19,7 +32,11 @@ static uint8_t bus_read(void *ctx, uint16_t addr) {
 static void bus_write(void *ctx, uint16_t addr, uint8_t v) {
     Nes *n = ctx;
     if (addr < 0x2000) { n->ram[addr & 0x7FF] = v; return; }
-    if (addr < 0x4000) { ppu_reg_write(&n->ppu, addr, v); return; }
+    if (addr < 0x4000) {
+        ppu_catch_up(n, n->cpu.access_cycle * 3 + PPU_ALIGN);
+        ppu_reg_write(&n->ppu, addr, v);
+        return;
+    }
     if (addr == 0x4014) { /* OAM DMA */
         uint16_t base = (uint16_t)(v << 8);
         for (int i = 0; i < 256; i++)
@@ -58,7 +75,8 @@ void nes_reset(Nes *n) {
     n->dma_stall = 0;
     cpu_reset(&n->cpu);
     /* The reset sequence takes 7 CPU cycles, during which the PPU runs 21 dots. */
-    for (int i = 0; i < 21; i++) ppu_tick(&n->ppu);
+    n->ppu_ticked = 0;
+    ppu_catch_up(n, 21);
 }
 
 int nes_step(Nes *n) {
@@ -69,12 +87,19 @@ int nes_step(Nes *n) {
         n->dma_stall = 0;
     }
     for (int i = 0; i < cycles; i++) apu_tick(&n->apu);
-    for (int i = 0; i < cycles * 3; i++) ppu_tick(&n->ppu);
-    n->cpu.irq_line = n->cart.irq || apu_irq(&n->apu);
-    if (n->ppu.nmi_edge) {
+
+    /* Interrupts are polled at the end of the second-to-last cycle: an edge or
+     * level that appears only during the final cycle waits one more instruction. */
+    uint64_t end = n->cpu.cycles * 3;
+    if (cycles > 0) ppu_catch_up(n, end - 3);
+    bool nmi = n->ppu.nmi_edge && !n->ppu.nmi_late;
+    n->ppu.nmi_late = false;
+    ppu_catch_up(n, end);
+    if (nmi) {
         n->ppu.nmi_edge = false;
         cpu_nmi(&n->cpu);
     }
+    n->cpu.irq_line = n->cart.irq || apu_irq(&n->apu);
     return cycles;
 }
 

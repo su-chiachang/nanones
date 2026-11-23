@@ -27,6 +27,7 @@ typedef struct Cpu {
     uint64_t cycles;   /* total CPU cycles since reset */
     bool jammed;       /* hit a KIL / unsupported opcode */
     bool nmi_pending;  /* set by cpu_nmi(), consumed by the next cpu_step() */
+    uint64_t access_cycle; /* cycle number of the operand access of the instruction being executed */
     bool irq_line;     /* level-triggered; serviced while I flag is clear */
 
     CpuRead read;

@@ -69,6 +69,16 @@ uint8_t ppu_reg_read(Ppu *p, uint16_t addr) {
     uint8_t v = p->open_bus;
     switch (addr & 7) {
     case 2: /* PPUSTATUS */
+        /* Races around the dot where vblank is set (scanline 241, dot 1). */
+        if (p->scanline == 241 && p->dot == 0) p->suppress_vbl = true;       /* one dot early */
+        if (p->scanline == 241 && p->dot == 1) {                              /* same dot */
+            p->status |= PPUSTATUS_VBLANK;
+            p->suppress_vbl = true;
+        }
+        if (p->scanline == 241 && p->dot == 2) p->nmi_edge = false;         /* one dot late */
+        /* The pre-render line clears the flags on dot 1; a read on that dot already sees them clear. */
+        if (p->scanline == 261 && p->dot == 1)
+            p->status &= (uint8_t)~(PPUSTATUS_VBLANK | PPUSTATUS_SPRITE0 | PPUSTATUS_OVERFLOW);
         v = (uint8_t)((p->status & 0xE0) | (p->open_bus & 0x1F));
         p->status &= (uint8_t)~PPUSTATUS_VBLANK;
         p->w = false;
@@ -100,8 +110,13 @@ void ppu_reg_write(Ppu *p, uint16_t addr, uint8_t v) {
         uint8_t old = p->ctrl;
         p->ctrl = v;
         p->t = (uint16_t)((p->t & ~0x0C00) | ((v & 3) << 10));
-        if (!(old & PPUCTRL_NMI) && (v & PPUCTRL_NMI) && (p->status & PPUSTATUS_VBLANK))
+        bool vbl_visible = (p->status & PPUSTATUS_VBLANK) && !(p->scanline == 261 && p->dot <= 1);
+        if (!(v & PPUCTRL_NMI) && p->scanline == 241 && p->dot <= 2)
+            p->nmi_edge = false; /* disabling within a dot of vblank cancels the NMI */
+        if (!(old & PPUCTRL_NMI) && (v & PPUCTRL_NMI) && vbl_visible) {
             p->nmi_edge = true;
+            p->nmi_late = true;
+        }
         break;
     }
     case 1: p->mask = v; break;
@@ -164,6 +179,10 @@ static void shift(Ppu *p) {
     p->sh_pat_lo <<= 1; p->sh_pat_hi <<= 1;
     p->sh_at_lo <<= 1;  p->sh_at_hi <<= 1;
 }
+
+#ifndef SKIP_DECIDE_DOT
+#define SKIP_DECIDE_DOT 337
+#endif
 
 /* ---- the dot clock ---- */
 
@@ -300,8 +319,11 @@ void ppu_tick(Ppu *p) {
     }
 
     if (sl == 241 && d == 1) {
-        p->status |= PPUSTATUS_VBLANK;
-        if (p->ctrl & PPUCTRL_NMI) p->nmi_edge = true;
+        if (!p->suppress_vbl) {
+            p->status |= PPUSTATUS_VBLANK;
+            if (p->ctrl & PPUCTRL_NMI) p->nmi_edge = true;
+        }
+        p->suppress_vbl = false;
         p->frame_done = true;
     }
     if (sl == 261 && d == 1)
@@ -309,7 +331,9 @@ void ppu_tick(Ppu *p) {
 
     /* advance */
     p->dot++;
-    if (sl == 261 && p->dot == 340 && (p->frame & 1) && rendering) p->dot = 341; /* odd-frame skip */
+    /* odd frames skip the last pre-render dot when the background is enabled */
+    if (sl == 261 && d == SKIP_DECIDE_DOT) p->skip_dot = (p->frame & 1) && (p->mask & PPUMASK_BG);
+    if (sl == 261 && p->dot == 340 && p->skip_dot) p->dot = 341;
     if (p->dot >= 341) {
         p->dot = 0;
         if (++p->scanline > 261) { p->scanline = 0; p->frame++; }

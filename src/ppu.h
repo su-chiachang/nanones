@@ -58,6 +58,9 @@ typedef struct Ppu {
     bool spr0_in_line; /* OAM sprite 0 is in spr[0] */
 
     /* outputs */
+    bool suppress_vbl;  /* a $2002 read one dot before vblank blocks the flag and the NMI */
+    bool skip_dot;      /* this pre-render line drops its last dot */
+    bool nmi_late;      /* edge came from a $2000 write: too late to be polled by this instruction */
     bool nmi_edge;      /* raised on a rising NMI line; consumed by the system */
     bool frame_done;    /* set once per frame at the start of vblank */
     uint32_t fb[PPU_W * PPU_H]; /* 0xAARRGGBB */

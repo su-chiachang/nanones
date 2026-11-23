@@ -306,6 +306,8 @@ int cpu_step(Cpu *c) {
     if (o->mode != IMP && o->mode != ACC && o->mode != REL)
         addr = resolve(c, (Mode)o->mode, &crossed);
     if (crossed) cycles += o->penalty;
+    /* Operand reads and writes happen on the last cycle of the instruction. */
+    c->access_cycle = c->cycles + (uint64_t)cycles - 1;
 
     switch ((Mnemonic)o->op) {
     case JAM:
