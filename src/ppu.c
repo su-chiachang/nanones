@@ -50,6 +50,13 @@ static void mem_write(Ppu *p, uint16_t addr, uint8_t v) {
     else p->palette[pal_index(addr)] = v;
 }
 
+/* Outside rendering the PPU address bus follows v, so $2006/$2007 activity
+ * toggles A12 as seen by the mapper (MMC3 counts these edges too). */
+static void bus_follow_v(Ppu *p) {
+    bool rendering = (p->mask & (PPUMASK_BG | PPUMASK_SPR)) && (p->scanline < 240 || p->scanline == 261);
+    if (!rendering && p->cart->ppu_observe) p->cart->ppu_observe(p->cart, (uint16_t)(p->v & 0x3FFF));
+}
+
 /* ---- lifecycle ---- */
 
 void ppu_init(Ppu *p, Cart *cart) {
@@ -95,6 +102,7 @@ uint8_t ppu_reg_read(Ppu *p, uint16_t addr) {
             p->read_buf = mem_read(p, p->v);
         }
         p->v = (uint16_t)(p->v + ((p->ctrl & PPUCTRL_INC32) ? 32 : 1));
+        bus_follow_v(p);
         break;
     default:
         break; /* write-only registers return the open bus */
@@ -137,12 +145,14 @@ void ppu_reg_write(Ppu *p, uint16_t addr, uint8_t v) {
         } else {
             p->t = (uint16_t)((p->t & 0xFF00) | v);
             p->v = p->t;
+            bus_follow_v(p);
         }
         p->w = !p->w;
         break;
     case 7: /* PPUDATA */
         mem_write(p, p->v, v);
         p->v = (uint16_t)(p->v + ((p->ctrl & PPUCTRL_INC32) ? 32 : 1));
+        bus_follow_v(p);
         break;
     default: break; /* $2002 is read-only */
     }
@@ -180,6 +190,14 @@ static void shift(Ppu *p) {
     p->sh_at_lo <<= 1;  p->sh_at_hi <<= 1;
 }
 
+#ifndef BG_LO
+#define BG_LO 4
+#endif
+
+#ifndef SPR_OFF
+#define SPR_OFF 3
+#endif
+
 #ifndef SKIP_DECIDE_DOT
 #define SKIP_DECIDE_DOT 337
 #endif
@@ -201,22 +219,14 @@ static void fetch_step(Ppu *p, int dot) {
         p->at_latch = at & 3;
         break;
     }
-    case 4: {
-        uint16_t a = (uint16_t)(((p->ctrl & PPUCTRL_BG_TABLE) ? 0x1000 : 0) +
-                                (p->nt_latch << 4) + ((p->v >> 12) & 7));
-        p->pat_lo_latch = mem_read(p, a);
+    default:
         break;
     }
-    case 6: {
-        uint16_t a = (uint16_t)(((p->ctrl & PPUCTRL_BG_TABLE) ? 0x1000 : 0) +
-                                (p->nt_latch << 4) + ((p->v >> 12) & 7) + 8);
-        p->pat_hi_latch = mem_read(p, a);
-        break;
-    }
-    case 7:
-        inc_x(p);
-        break;
-    }
+    int phase = (dot - 1) & 7;
+    uint16_t base = (uint16_t)(((p->ctrl & PPUCTRL_BG_TABLE) ? 0x1000 : 0) + (p->nt_latch << 4) + ((p->v >> 12) & 7));
+    if (phase == BG_LO) p->pat_lo_latch = mem_read(p, base);
+    if (phase == BG_LO + 2) p->pat_hi_latch = mem_read(p, (uint16_t)(base + 8));
+    if (phase == 7) inc_x(p);
 }
 
 static uint8_t reverse8(uint8_t b) {
@@ -226,46 +236,46 @@ static uint8_t reverse8(uint8_t b) {
     return b;
 }
 
-/* Picks the sprites for scanline `line` and fetches their patterns.
- * Unused slots still fetch tile $FF so the pattern bus (and later MMC3's A12
- * counter) sees the same traffic as the real PPU. */
-static void eval_sprites(Ppu *p, int line) {
+/* Dot 257: pick up to 8 sprites for scanline `line` (secondary OAM). */
+static void select_sprites(Ppu *p, int line) {
     int height = (p->ctrl & PPUCTRL_SPRITE_SIZE) ? 16 : 8;
     int count = 0;
     p->spr0_in_line = false;
-
-    uint8_t sel[8][4];
     for (int n = 0; n < 64; n++) {
         int row = line - 1 - p->oam[n * 4];
         if (row < 0 || row >= height) continue;
         if (count == 8) { p->status |= PPUSTATUS_OVERFLOW; break; }
-        memcpy(sel[count], &p->oam[n * 4], 4);
+        memcpy(p->sel[count], &p->oam[n * 4], 4);
         if (n == 0) p->spr0_in_line = true;
         count++;
     }
-
-    for (int i = 0; i < 8; i++) {
-        uint8_t tile = 0xFF, attr = 0, x = 0xFF;
-        int row = 0;
-        if (i < count) {
-            tile = sel[i][1]; attr = sel[i][2]; x = sel[i][3];
-            row = line - 1 - sel[i][0];
-            if (attr & 0x80) row = height - 1 - row; /* vertical flip */
-        }
-        uint16_t addr;
-        if (height == 8) {
-            addr = (uint16_t)(((p->ctrl & PPUCTRL_SPRITE_TABLE) ? 0x1000 : 0) + tile * 16 + row);
-        } else {
-            addr = (uint16_t)(((tile & 1) ? 0x1000 : 0) + (tile & 0xFE) * 16 +
-                              (row & 7) + (row & 8 ? 16 : 0));
-        }
-        uint8_t lo = mem_read(p, addr), hi = mem_read(p, (uint16_t)(addr + 8));
-        if (i >= count) lo = hi = 0;
-        if (attr & 0x40) { lo = reverse8(lo); hi = reverse8(hi); } /* horizontal flip */
-        p->spr[i].attr = attr; p->spr[i].x = x;
-        p->spr[i].lo = lo; p->spr[i].hi = hi;
-    }
     p->spr_count = count;
+    p->sel_line = line;
+}
+
+/* Dots 261+8i / 263+8i: fetch the pattern bytes of sprite slot i. Unused slots
+ * still fetch tile $FF so the pattern bus (and MMC3's A12 counter) sees the
+ * same traffic as the real PPU. */
+static void fetch_sprite(Ppu *p, int slot, bool high) {
+    int height = (p->ctrl & PPUCTRL_SPRITE_SIZE) ? 16 : 8;
+    bool used = slot < p->spr_count;
+    uint8_t tile = used ? p->sel[slot][1] : 0xFF;
+    uint8_t attr = used ? p->sel[slot][2] : 0;
+    int row = used ? p->sel_line - 1 - p->sel[slot][0] : 0;
+    if (used && (attr & 0x80)) row = height - 1 - row; /* vertical flip */
+
+    uint16_t addr;
+    if (height == 8) {
+        addr = (uint16_t)(((p->ctrl & PPUCTRL_SPRITE_TABLE) ? 0x1000 : 0) + tile * 16 + row);
+    } else {
+        addr = (uint16_t)(((tile & 1) ? 0x1000 : 0) + (tile & 0xFE) * 16 + (row & 7) + (row & 8 ? 16 : 0));
+    }
+    uint8_t v = mem_read(p, (uint16_t)(addr + (high ? 8 : 0)));
+    if (!used) v = 0;
+    if (attr & 0x40) v = reverse8(v); /* horizontal flip */
+    p->spr[slot].attr = attr;
+    p->spr[slot].x = used ? p->sel[slot][3] : 0xFF;
+    if (high) p->spr[slot].hi = v; else p->spr[slot].lo = v;
 }
 
 static void draw_pixel(Ppu *p, int x, int y) {
@@ -310,7 +320,12 @@ void ppu_tick(Ppu *p) {
             }
             if (d == 256) inc_y(p);
             if (d == 257) copy_x(p);
-            if (d == 260) eval_sprites(p, sl == 261 ? 0 : sl + 1);
+            if (d == 257) select_sprites(p, sl == 261 ? 0 : sl + 1);
+            if (d >= 257 + SPR_OFF && d <= 320 + SPR_OFF) {
+                int k = d - 257 - SPR_OFF;
+                if ((k & 7) == 4) fetch_sprite(p, k >> 3, false);
+                if ((k & 7) == 6) fetch_sprite(p, k >> 3, true);
+            }
             if (d == 338 || d == 340)
                 p->nt_latch = mem_read(p, (uint16_t)(0x2000 | (p->v & 0x0FFF)));
             if (sl == 261 && d >= 280 && d <= 304) copy_y(p);

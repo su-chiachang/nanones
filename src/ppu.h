@@ -54,6 +54,8 @@ typedef struct Ppu {
     struct {
         uint8_t attr, x, lo, hi;
     } spr[8];
+    uint8_t sel[8][4];  /* secondary OAM */
+    int sel_line;
     int spr_count;
     bool spr0_in_line; /* OAM sprite 0 is in spr[0] */
 

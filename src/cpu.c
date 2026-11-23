@@ -8,6 +8,7 @@ typedef enum {
     RTS, SBC, SEC, SED, SEI, STA, STX, STY, TAX, TAY, TSX, TXA, TXS, TYA,
     /* unofficial */
     DCP, ISB, LAX, RLA, RRA, SAX, SLO, SRE,
+    ANC, ALR, ARR, AXS, XAA, LXA, SHY, SHX, AHX, TAS, LAS,
 } Mnemonic;
 
 typedef enum {
@@ -119,6 +120,12 @@ static const Op OPS[256] = {
     /* SRE */ O(0x47, SRE, ZP, 5, 0), O(0x57, SRE, ZPX, 6, 0), O(0x4F, SRE, ABS, 6, 0),
               O(0x5F, SRE, ABX, 7, 0), O(0x5B, SRE, ABY, 7, 0),
               O(0x43, SRE, IZX, 8, 0), O(0x53, SRE, IZY, 8, 0),
+    /* odd ones */
+    O(0x0B, ANC, IMM, 2, 0), O(0x2B, ANC, IMM, 2, 0), O(0x4B, ALR, IMM, 2, 0),
+    O(0x6B, ARR, IMM, 2, 0), O(0xCB, AXS, IMM, 2, 0), O(0x8B, XAA, IMM, 2, 0),
+    O(0xAB, LXA, IMM, 2, 0), O(0x9C, SHY, ABX, 5, 0), O(0x9E, SHX, ABY, 5, 0),
+    O(0x9F, AHX, ABY, 5, 0), O(0x93, AHX, IZY, 6, 0), O(0x9B, TAS, ABY, 5, 0),
+    O(0xBB, LAS, ABY, 4, 1),
     /* RRA */ O(0x67, RRA, ZP, 5, 0), O(0x77, RRA, ZPX, 6, 0), O(0x6F, RRA, ABS, 6, 0),
               O(0x7F, RRA, ABX, 7, 0), O(0x7B, RRA, ABY, 7, 0),
               O(0x63, RRA, IZX, 8, 0), O(0x73, RRA, IZY, 8, 0),
@@ -459,6 +466,47 @@ int cpu_step(Cpu *c) {
         wr(c, addr, m);
         adc(c, m);
         break;
+
+    /* ---- the rest of the unofficial set ---- */
+    case ANC: c->a &= rd(c, addr); set_zn(c, c->a); set_flag(c, CPU_C, c->a & 0x80); break;
+    case ALR: c->a &= rd(c, addr); c->a = lsr(c, c->a); break;
+    case ARR:
+        c->a &= rd(c, addr);
+        c->a = (uint8_t)((c->a >> 1) | ((c->p & CPU_C) << 7));
+        set_zn(c, c->a);
+        set_flag(c, CPU_C, c->a & 0x40);
+        set_flag(c, CPU_V, ((c->a >> 6) ^ (c->a >> 5)) & 1);
+        break;
+    case AXS:
+        m = rd(c, addr);
+        set_flag(c, CPU_C, (c->a & c->x) >= m);
+        c->x = (uint8_t)((c->a & c->x) - m);
+        set_zn(c, c->x);
+        break;
+    case XAA: c->a = c->x & rd(c, addr); set_zn(c, c->a); break;
+    case LXA: c->a = c->x = rd(c, addr); set_zn(c, c->a); break;
+    case LAS:
+        c->a = c->x = c->sp = (uint8_t)(rd(c, addr) & c->sp);
+        set_zn(c, c->a);
+        break;
+    case SHY: case SHX: case AHX: case TAS: {
+        /* Store (reg & (high byte of the base address + 1)); on a page cross the
+         * high byte of the target is replaced by that value. */
+        uint8_t index = (o->mode == ABX) ? c->x : c->y;
+        uint16_t base = (uint16_t)(addr - index);
+        uint8_t val;
+        switch ((Mnemonic)o->op) {
+        case SHY: val = c->y; break;
+        case SHX: val = c->x; break;
+        case AHX: val = (uint8_t)(c->a & c->x); break;
+        default:  c->sp = (uint8_t)(c->a & c->x); val = c->sp; break; /* TAS */
+        }
+        uint8_t hi = (uint8_t)(base >> 8);
+        val &= (uint8_t)(hi + 1);
+        if ((base & 0xFF00) != (addr & 0xFF00)) addr = (uint16_t)((val << 8) | (addr & 0xFF));
+        wr(c, addr, val);
+        break;
+    }
     }
 
     c->cycles += (uint64_t)cycles;
