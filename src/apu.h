@@ -37,7 +37,9 @@ typedef struct Apu {
     ApuNoise noise;
     ApuDmc dmc;
 
-    uint32_t frame_cycle;
+    int32_t frame_cycle;
+    bool wrapped;           /* the 4-step sequence just wrapped: IRQ flag is also set on cycle 0 */
+    bool pending_clock;     /* $4017 with the 5-step bit: quarter+half clock after the reset delay */
     bool five_step, irq_inhibit, frame_irq;
     bool odd_cycle;
 

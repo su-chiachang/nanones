@@ -24,6 +24,7 @@ typedef struct Nes {
     bool pad_strobe;
 
     uint64_t ppu_ticked; /* PPU dots executed so far; kept equal to 3 * CPU cycles between instructions */
+    uint64_t apu_ticked; /* APU cycles executed so far */
     int dma_stall;       /* extra CPU cycles queued by an OAM DMA */
 } Nes;
 

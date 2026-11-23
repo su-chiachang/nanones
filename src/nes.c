@@ -12,6 +12,14 @@ static void ppu_catch_up(Nes *n, uint64_t target) {
     while (n->ppu_ticked < target) { ppu_tick(&n->ppu); n->ppu_ticked++; }
 }
 
+#ifndef APU_ALIGN
+#define APU_ALIGN 0
+#endif
+
+static void apu_catch_up(Nes *n, uint64_t target) {
+    while (n->apu_ticked < target) { apu_tick(&n->apu); n->apu_ticked++; }
+}
+
 static uint8_t bus_read(void *ctx, uint16_t addr) {
     Nes *n = ctx;
     if (addr < 0x2000) return n->ram[addr & 0x7FF];
@@ -24,7 +32,10 @@ static uint8_t bus_read(void *ctx, uint16_t addr) {
         if (!n->pad_strobe) n->pad_shift = (uint8_t)((n->pad_shift >> 1) | 0x80);
         return (uint8_t)(0x40 | bit); /* bit 6 mimics open bus on the data lines */
     }
-    if (addr == 0x4015) return apu_read_status(&n->apu);
+    if (addr == 0x4015) {
+        apu_catch_up(n, n->cpu.access_cycle + APU_ALIGN);
+        return apu_read_status(&n->apu);
+    }
     if (addr < 0x4020) return 0; /* second pad: not implemented */
     return n->cart.cpu_read(&n->cart, addr);
 }
@@ -49,7 +60,11 @@ static void bus_write(void *ctx, uint16_t addr, uint8_t v) {
         if (n->pad_strobe) n->pad_shift = n->buttons;
         return;
     }
-    if (addr < 0x4020) { apu_write(&n->apu, addr, v); return; }
+    if (addr < 0x4020) {
+        apu_catch_up(n, n->cpu.access_cycle + APU_ALIGN);
+        apu_write(&n->apu, addr, v);
+        return;
+    }
     n->cart.cpu_write(&n->cart, addr, v);
 }
 
@@ -75,6 +90,7 @@ void nes_reset(Nes *n) {
     n->dma_stall = 0;
     cpu_reset(&n->cpu);
     /* The reset sequence takes 7 CPU cycles, during which the PPU runs 21 dots. */
+    n->apu_ticked = 7;
     n->ppu_ticked = 0;
     ppu_catch_up(n, 21);
 }
@@ -86,7 +102,7 @@ int nes_step(Nes *n) {
         n->cpu.cycles += (uint64_t)n->dma_stall;
         n->dma_stall = 0;
     }
-    for (int i = 0; i < cycles; i++) apu_tick(&n->apu);
+    apu_catch_up(n, n->cpu.cycles);
 
     /* Interrupts are polled at the end of the second-to-last cycle: an edge or
      * level that appears only during the final cycle waits one more instruction. */

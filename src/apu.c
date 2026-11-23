@@ -3,6 +3,11 @@
 #include <string.h>
 
 #define CPU_HZ 1789773.0
+#ifndef FC_D
+#define FC_D 34 /* tens digit: delay on even cycles, ones digit: on odd cycles */
+#endif
+#define FC_DELAY_EVEN (FC_D / 10)
+#define FC_DELAY_ODD (FC_D % 10)
 
 static const uint8_t LENGTHS[32] = {
     10, 254, 20, 2, 40, 4, 80, 6, 160, 8, 60, 10, 14, 12, 26, 14,
@@ -116,8 +121,9 @@ void apu_write(Apu *a, uint16_t addr, uint8_t v) {
     case 0x4017:
         a->five_step = v & 0x80; a->irq_inhibit = v & 0x40;
         if (a->irq_inhibit) a->frame_irq = false;
-        a->frame_cycle = 0;
-        if (a->five_step) { quarter_frame(a); half_frame(a); }
+        /* The sequencer restarts 3 or 4 cycles after the write, depending on parity. */
+        a->frame_cycle = a->odd_cycle ? -FC_DELAY_ODD : -FC_DELAY_EVEN;
+        a->pending_clock = a->five_step;
         break;
     }
 }
@@ -181,6 +187,14 @@ static float mix(const Apu *a) {
 void apu_tick(Apu *a) {
     /* frame counter */
     a->frame_cycle++;
+    if (a->frame_cycle == 0 && a->wrapped) {
+        a->wrapped = false;
+        if (!a->irq_inhibit) a->frame_irq = true;
+    }
+    if (a->frame_cycle == 0 && a->pending_clock) {
+        a->pending_clock = false;
+        quarter_frame(a); half_frame(a);
+    }
     if (!a->five_step) {
         switch (a->frame_cycle) {
         case 7457: quarter_frame(a); break;
@@ -189,14 +203,15 @@ void apu_tick(Apu *a) {
         case 29828: if (!a->irq_inhibit) a->frame_irq = true; break;
         case 29829: quarter_frame(a); half_frame(a);
                     if (!a->irq_inhibit) a->frame_irq = true;
-                    a->frame_cycle = 0; break;
+                    a->wrapped = true;
+                    a->frame_cycle = -1; break;
         }
     } else {
         switch (a->frame_cycle) {
         case 7457: quarter_frame(a); break;
         case 14913: quarter_frame(a); half_frame(a); break;
         case 22371: quarter_frame(a); break;
-        case 37281: quarter_frame(a); half_frame(a); a->frame_cycle = 0; break;
+        case 37281: quarter_frame(a); half_frame(a); a->frame_cycle = -1; break;
         }
     }
 
