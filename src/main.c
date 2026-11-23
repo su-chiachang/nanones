@@ -1,8 +1,9 @@
 /* nes-emu: SDL3 front end.
  *
  *   nes-emu game.nes                      play (Esc quits)
- *   nes-emu game.nes --headless N out.ppm run N frames without a window and
- *                                         dump the last frame (for tests)
+ *   nes-emu game.nes --headless N out.ppm [keys]
+ *                                         run N frames without a window, dump the
+ *                                         last frame; keys = "frame:hexmask,..."
  *
  * Keys: arrows = D-pad, Z = B, X = A, Enter = Start, Right Shift = Select.
  */
@@ -18,8 +19,24 @@
 
 #define SCALE 3
 
-static int run_headless(Nes *nes, int frames, const char *out) {
+/* keys spec: "frame:hexmask,frame:hexmask,..." — the mask stays held from that
+ * frame on (BTN_A=01 B=02 Select=04 Start=08 Up=10 Down=20 Left=40 Right=80). */
+static uint8_t scripted_buttons(const char *spec, int frame) {
+    uint8_t held = 0;
+    while (spec && *spec) {
+        char *end;
+        long f = strtol(spec, &end, 10);
+        if (*end != ':') break;
+        long mask = strtol(end + 1, &end, 16);
+        if (f <= frame) held = (uint8_t)mask;
+        spec = (*end == ',') ? end + 1 : NULL;
+    }
+    return held;
+}
+
+static int run_headless(Nes *nes, int frames, const char *out, const char *keys) {
     for (int i = 0; i < frames; i++) {
+        nes->buttons = scripted_buttons(keys, i);
         if (!nes_run_frame(nes)) {
             fprintf(stderr, "CPU jammed at $%04X\n", nes->cpu.pc);
             return 1;
@@ -61,8 +78,8 @@ int main(int argc, char **argv) {
     static Nes nes;
     if (nes_load(&nes, argv[1]) != 0) return 1;
 
-    if (argc == 5 && strcmp(argv[2], "--headless") == 0) {
-        int rc = run_headless(&nes, atoi(argv[3]), argv[4]);
+    if (argc >= 5 && strcmp(argv[2], "--headless") == 0) {
+        int rc = run_headless(&nes, atoi(argv[3]), argv[4], argc > 5 ? argv[5] : NULL);
         nes_free(&nes);
         return rc;
     }
