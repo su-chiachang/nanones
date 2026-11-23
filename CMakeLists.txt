@@ -49,9 +49,11 @@ foreach(rom
     tests/roms/apu_test/rom_singles/8-dmc_rates.nes
     tests/roms/instr_test-v5/rom_singles/01-basics.nes
     tests/roms/instr_test-v5/rom_singles/02-implied.nes
+    tests/roms/instr_test-v5/rom_singles/03-immediate.nes
     tests/roms/instr_test-v5/rom_singles/04-zero_page.nes
     tests/roms/instr_test-v5/rom_singles/05-zp_xy.nes
     tests/roms/instr_test-v5/rom_singles/06-absolute.nes
+    tests/roms/instr_test-v5/rom_singles/07-abs_xy.nes
     tests/roms/instr_test-v5/rom_singles/08-ind_x.nes
     tests/roms/instr_test-v5/rom_singles/09-ind_y.nes
     tests/roms/instr_test-v5/rom_singles/10-branches.nes
@@ -61,7 +63,12 @@ foreach(rom
     tests/roms/instr_test-v5/rom_singles/14-rti.nes
     tests/roms/instr_test-v5/rom_singles/15-brk.nes
     tests/roms/instr_test-v5/rom_singles/16-special.nes
+    tests/roms/instr_timing/rom_singles/1-instr_timing.nes
     tests/roms/instr_timing/rom_singles/2-branch_timing.nes
+    tests/roms/mmc3_test_2/rom_singles/1-clocking.nes
+    tests/roms/mmc3_test_2/rom_singles/2-details.nes
+    tests/roms/mmc3_test_2/rom_singles/3-A12_clocking.nes
+    tests/roms/mmc3_test_2/rom_singles/5-MMC3.nes
     tests/roms/ppu_vbl_nmi/rom_singles/01-vbl_basics.nes
     tests/roms/ppu_vbl_nmi/rom_singles/02-vbl_set_time.nes
     tests/roms/ppu_vbl_nmi/rom_singles/03-vbl_clear_time.nes
