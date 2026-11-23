@@ -35,20 +35,24 @@ static void dump(const Nes *n, const char *prefix, int frame) {
     fclose(f);
 }
 
-/* Candidate plans: {buttons, frames} segments, run for HORIZON frames in total. */
-typedef struct { uint8_t b1; int n1; uint8_t b2; } Plan;
+/* Candidate plans: wait `delay` frames running, then hold A for `jump` frames, then run on. */
+typedef struct { int delay, jump; uint8_t run; } Plan;
 static const Plan PLANS[] = {
-    {BTN_RIGHT | BTN_B, 1000, 0},
-    {BTN_RIGHT | BTN_B | BTN_A, 14, BTN_RIGHT | BTN_B},
-    {BTN_RIGHT | BTN_B | BTN_A, 26, BTN_RIGHT | BTN_B},
-    {BTN_RIGHT | BTN_B | BTN_A, 40, BTN_RIGHT | BTN_B},
-    {BTN_B, 6, BTN_RIGHT | BTN_B},
-    {BTN_RIGHT, 1000, 0},
-    {BTN_LEFT | BTN_B, 8, BTN_RIGHT | BTN_B},
+    {0, 0, BTN_RIGHT | BTN_B},
+    {0, 14, BTN_RIGHT | BTN_B}, {0, 26, BTN_RIGHT | BTN_B}, {0, 40, BTN_RIGHT | BTN_B},
+    {8, 26, BTN_RIGHT | BTN_B}, {8, 40, BTN_RIGHT | BTN_B},
+    {16, 26, BTN_RIGHT | BTN_B}, {16, 40, BTN_RIGHT | BTN_B},
+    {24, 26, BTN_RIGHT | BTN_B}, {24, 40, BTN_RIGHT | BTN_B},
+    {0, 0, BTN_RIGHT}, {0, 0, BTN_B}, {0, 26, BTN_RIGHT},
 };
 #define NPLANS (int)(sizeof PLANS / sizeof PLANS[0])
-#define HORIZON 50
-#define STEP 10
+#define HORIZON 80
+#define STEP 8
+
+static uint8_t plan_buttons(const Plan *p, int i) {
+    if (i >= p->delay && i < p->delay + p->jump) return p->run | BTN_A;
+    return p->run;
+}
 
 int main(int argc, char **argv) {
     if (argc < 3) { fprintf(stderr, "usage: %s rom.nes out_prefix [frames]\n", argv[0]); return 2; }
@@ -61,19 +65,28 @@ int main(int argc, char **argv) {
 
     int best_x = 0;
     while (f < total) {
+        if (mario_x(&nes) > 4000) { printf("left the level at frame %d (best x=%d)\n", f, best_x);
+            /* let the end-of-level sequence play out, pressing A now and then to skip screens */
+            for (int i = 0; i < 900; i++, f++) {
+                nes.buttons = (i % 120) < 6 ? BTN_A : 0;
+                nes_run_frame(&nes);
+                if (i % 100 == 99) { dump(&nes, argv[2], f); printf("after level: frame %d dumped\n", f); }
+            }
+            break;
+        }
         nes_clone(&snap, &nes);
         int best = 0, best_score = -1;
         for (int p = 0; p < NPLANS; p++) {
             nes_clone(&trial, &snap);
             for (int i = 0; i < HORIZON; i++) {
-                trial.buttons = i < PLANS[p].n1 ? PLANS[p].b1 : PLANS[p].b2;
+                trial.buttons = plan_buttons(&PLANS[p], i);
                 nes_run_frame(&trial);
             }
             int score = mario_x(&trial) * 4 - (trial.ram[0xA2] > 0xB8 ? 100 : 0);
             if (score > best_score) { best_score = score; best = p; }
         }
         for (int i = 0; i < STEP; i++, f++) {
-            nes.buttons = i < PLANS[best].n1 ? PLANS[best].b1 : PLANS[best].b2;
+            nes.buttons = plan_buttons(&PLANS[best], i);
             nes_run_frame(&nes);
             if (f % 300 == 0) dump(&nes, argv[2], f);
         }
