@@ -46,6 +46,7 @@ typedef struct Apu {
     /* audio output */
     double sample_rate, cycles_per_sample, sample_acc;
     double mix_sum; int mix_count;
+    double hp_prev_in, hp_prev_out; /* ~37 Hz high-pass, like the console's output stage */
     float ring[APU_RING];
     size_t ring_head, ring_count;
 

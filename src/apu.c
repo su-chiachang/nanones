@@ -246,7 +246,10 @@ void apu_tick(Apu *a) {
     a->sample_acc += 1.0;
     if (a->sample_acc >= a->cycles_per_sample) {
         a->sample_acc -= a->cycles_per_sample;
-        float s = (float)(a->mix_sum / a->mix_count);
+        double x = a->mix_sum / a->mix_count;
+        double hp = 0.99516 * (a->hp_prev_out + x - a->hp_prev_in); /* exp(-2*pi*37/48000) */
+        a->hp_prev_in = x; a->hp_prev_out = hp;
+        float s = (float)hp;
         a->mix_sum = 0; a->mix_count = 0;
         a->ring[(a->ring_head + a->ring_count) % APU_RING] = s;
         if (a->ring_count < APU_RING) a->ring_count++;
