@@ -4,7 +4,7 @@ project(nes-emu C)
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 
-add_library(nescpu STATIC src/cpu.c)
+add_library(nescpu STATIC src/cpu.c src/cart.c src/ppu.c src/nes.c)
 target_compile_options(nescpu PRIVATE -Wall -Wextra)
 
 add_executable(nestest_runner tests/nestest_runner.c)
@@ -21,3 +21,12 @@ add_test(NAME nestest
          COMMAND nestest_runner
                  ${CMAKE_SOURCE_DIR}/tests/nestest.nes
                  ${CMAKE_SOURCE_DIR}/tests/nestest.log)
+
+find_package(SDL3 CONFIG)
+if(SDL3_FOUND)
+  add_executable(nes-emu src/main.c)
+  target_compile_options(nes-emu PRIVATE -Wall -Wextra)
+  target_link_libraries(nes-emu PRIVATE nescpu SDL3::SDL3)
+else()
+  message(STATUS "SDL3 not found: skipping the nes-emu front end")
+endif()
