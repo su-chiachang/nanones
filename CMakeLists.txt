@@ -19,7 +19,12 @@ add_executable(ppu_sprite_test tests/ppu_sprite_test.c)
 target_compile_options(ppu_sprite_test PRIVATE -Wall -Wextra)
 target_link_libraries(ppu_sprite_test PRIVATE nescpu)
 
+add_executable(mmc3_irq_test tests/mmc3_irq_test.c)
+target_compile_options(mmc3_irq_test PRIVATE -Wall -Wextra)
+target_link_libraries(mmc3_irq_test PRIVATE nescpu)
+
 enable_testing()
+add_test(NAME mmc3_irq COMMAND mmc3_irq_test ${CMAKE_SOURCE_DIR}/tests/mmc3_irq_test.nes)
 add_test(NAME ppu_sprite COMMAND ppu_sprite_test ${CMAKE_SOURCE_DIR}/tests/sprite_test.nes)
 add_test(NAME cpu_interrupt COMMAND cpu_interrupt_test)
 add_test(NAME nestest

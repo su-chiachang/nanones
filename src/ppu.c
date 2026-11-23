@@ -37,6 +37,7 @@ static unsigned pal_index(uint16_t addr) {
 
 static uint8_t mem_read(Ppu *p, uint16_t addr) {
     addr &= 0x3FFF;
+    if (addr < 0x3000 && p->cart->ppu_observe) p->cart->ppu_observe(p->cart, addr);
     if (addr < 0x2000) return p->cart->ppu_read(p->cart, addr);
     if (addr < 0x3F00) return p->vram[nt_index(p, addr)];
     return p->palette[pal_index(addr)];
@@ -277,6 +278,7 @@ static void draw_pixel(Ppu *p, int x, int y) {
 }
 
 void ppu_tick(Ppu *p) {
+    p->cart->ppu_clock++;
     int sl = p->scanline, d = p->dot;
     bool rendering = (p->mask & (PPUMASK_BG | PPUMASK_SPR)) != 0;
     bool render_line = sl < 240 || sl == 261;

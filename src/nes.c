@@ -65,6 +65,7 @@ int nes_step(Nes *n) {
         n->dma_stall = 0;
     }
     for (int i = 0; i < cycles * 3; i++) ppu_tick(&n->ppu);
+    n->cpu.irq_line = n->cart.irq;
     if (n->ppu.nmi_edge) {
         n->ppu.nmi_edge = false;
         cpu_nmi(&n->cpu);

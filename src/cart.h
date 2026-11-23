@@ -31,6 +31,13 @@ struct Cart {
     uint8_t (*ppu_read)(Cart *, uint16_t addr);
     void (*ppu_write)(Cart *, uint16_t addr, uint8_t value);
 
+    /* Called for every PPU fetch below $3000 (pattern and nametable) so a
+     * mapper can watch address line A12, as MMC3 does for its IRQ counter. */
+    void (*ppu_observe)(Cart *, uint16_t addr);
+
+    uint64_t ppu_clock; /* PPU dots since power-on, advanced by the PPU */
+    bool irq;           /* level of the mapper's IRQ output */
+
     void *mstate; /* mapper-private state */
 };
 
