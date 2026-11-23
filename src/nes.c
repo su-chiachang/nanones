@@ -1,5 +1,6 @@
 #include "nes.h"
 
+#include <stdlib.h>
 #include <string.h>
 
 #ifndef PPU_ALIGN
@@ -78,6 +79,26 @@ int nes_load(Nes *n, const char *rom_path) {
     cpu_init(&n->cpu, bus_read, bus_write, n);
     nes_reset(n);
     return 0;
+}
+
+void nes_clone(Nes *dst, const Nes *src) {
+    void *mstate = dst->cart.mstate;
+    uint8_t *chr = dst->cart.chr;
+    bool had_chr = dst->cart.chr_is_ram && chr;
+    memcpy(dst, src, sizeof *dst);
+    if (src->cart.mstate) {
+        if (!mstate) mstate = malloc(src->cart.mstate_size);
+        memcpy(mstate, src->cart.mstate, src->cart.mstate_size);
+        dst->cart.mstate = mstate;
+    }
+    if (src->cart.chr_is_ram) {
+        if (!had_chr) chr = malloc(src->cart.chr_size);
+        memcpy(chr, src->cart.chr, src->cart.chr_size);
+        dst->cart.chr = chr;
+    }
+    dst->cpu.ctx = dst;
+    dst->apu.ctx = dst;
+    dst->ppu.cart = &dst->cart;
 }
 
 void nes_free(Nes *n) { cart_free(&n->cart); }

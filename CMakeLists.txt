@@ -27,6 +27,9 @@ add_executable(apu_test tests/apu_test.c)
 target_compile_options(apu_test PRIVATE -Wall -Wextra)
 target_link_libraries(apu_test PRIVATE nescpu m)
 
+add_executable(smb3_bot tests/smb3_bot.c)
+target_link_libraries(smb3_bot PRIVATE nescpu)
+
 add_executable(blargg_runner tests/blargg_runner.c)
 target_link_libraries(blargg_runner PRIVATE nescpu)
 

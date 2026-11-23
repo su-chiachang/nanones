@@ -39,6 +39,7 @@ struct Cart {
     bool irq;           /* level of the mapper's IRQ output */
 
     void *mstate; /* mapper-private state */
+    size_t mstate_size;
 };
 
 /* Returns 0 on success; prints a message to stderr and returns -1 otherwise. */

@@ -32,6 +32,10 @@ int nes_load(Nes *n, const char *rom_path);
 void nes_free(Nes *n);
 void nes_reset(Nes *n);
 
+/* Copies the whole machine state into `dst` (zero-initialised on first use).
+ * ROM data is shared with `src`, so never nes_free() a clone. For search/tools. */
+void nes_clone(Nes *dst, const Nes *src);
+
 /* Runs one CPU instruction and the matching PPU dots. Returns CPU cycles used. */
 int nes_step(Nes *n);
 

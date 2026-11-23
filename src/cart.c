@@ -196,6 +196,7 @@ int cart_load(Cart *c, const char *path) {
         static const uint8_t init[8] = {0, 2, 4, 5, 6, 7, 0, 1};
         memcpy(m->regs, init, sizeof init);
         c->mstate = m;
+        c->mstate_size = sizeof *m;
         c->cpu_read = mmc3_cpu_read;
         c->cpu_write = mmc3_cpu_write;
         c->ppu_read = mmc3_ppu_read;
