@@ -94,12 +94,12 @@ int nes_step(Nes *n) {
     if (cycles > 0) ppu_catch_up(n, end - 3);
     bool nmi = n->ppu.nmi_edge && !n->ppu.nmi_late;
     n->ppu.nmi_late = false;
+    n->cpu.irq_line = n->cart.irq || apu_irq(&n->apu);
     ppu_catch_up(n, end);
     if (nmi) {
         n->ppu.nmi_edge = false;
         cpu_nmi(&n->cpu);
     }
-    n->cpu.irq_line = n->cart.irq || apu_irq(&n->apu);
     return cycles;
 }
 

@@ -67,10 +67,10 @@ static void test_irq_masked(void) {
     Cpu c; setup(&c);
     mem[0x8123] = 0xEA; /* NOP */
     c.irq_line = true;
-    c.p |= CPU_I;
+    c.p |= CPU_I; c.i_poll = true;
     cpu_step(&c);
     CHECK(c.pc == 0x8124, "IRQ ignored while I is set");
-    c.p &= (uint8_t)~CPU_I;
+    c.p &= (uint8_t)~CPU_I; c.i_poll = false;
     cpu_step(&c);
     CHECK(c.pc == 0xA000 && !(mem[0x1FB] & CPU_B), "IRQ taken when I clear, pushes B=0");
 }

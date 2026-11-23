@@ -47,6 +47,7 @@ foreach(rom
     tests/roms/apu_test/rom_singles/3-irq_flag.nes
     tests/roms/apu_test/rom_singles/7-dmc_basics.nes
     tests/roms/apu_test/rom_singles/8-dmc_rates.nes
+    tests/roms/cpu_interrupts_v2/rom_singles/1-cli_latency.nes
     tests/roms/instr_test-v5/rom_singles/01-basics.nes
     tests/roms/instr_test-v5/rom_singles/02-implied.nes
     tests/roms/instr_test-v5/rom_singles/03-immediate.nes

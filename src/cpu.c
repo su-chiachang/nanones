@@ -208,6 +208,7 @@ static int interrupt(Cpu *c, uint16_t vector, bool brk) {
     push(c, (uint8_t)c->pc);
     push(c, (uint8_t)((c->p | CPU_U) | (brk ? CPU_B : 0)));
     c->p |= CPU_I;
+    c->i_poll = true;
     c->pc = rd16(c, vector);
     return 7;
 }
@@ -225,6 +226,7 @@ void cpu_reset(Cpu *c) {
     c->a = c->x = c->y = 0;
     c->sp = 0xFD;
     c->p = CPU_I | CPU_U;
+    c->i_poll = true;
     c->pc = rd16(c, 0xFFFC);
     c->cycles = 7;
     c->jammed = false;
@@ -296,12 +298,13 @@ int cpu_step(Cpu *c) {
         c->cycles += (uint64_t)cycles;
         return cycles;
     }
-    if (c->irq_line && !(c->p & CPU_I)) {
+    if (c->irq_line && !c->i_poll) {
         cycles = interrupt(c, 0xFFFE, false);
         c->cycles += (uint64_t)cycles;
         return cycles;
     }
 
+    bool i_before = c->p & CPU_I;
     uint8_t opcode = rd(c, c->pc++);
     const Op *o = &OPS[opcode];
     cycles = o->cycles;
@@ -510,5 +513,7 @@ int cpu_step(Cpu *c) {
     }
 
     c->cycles += (uint64_t)cycles;
+    /* The poll happens before the last cycle, so CLI/SEI/PLP only affect it one instruction later. */
+    c->i_poll = (o->op == CLI || o->op == SEI || o->op == PLP) ? i_before : (c->p & CPU_I);
     return cycles;
 }
