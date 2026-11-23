@@ -92,6 +92,11 @@ int main(int argc, char **argv) {
             if (getenv("BOT_TRACE_FROM") && f >= atoi(getenv("BOT_TRACE_FROM")) && f < atoi(getenv("BOT_TRACE_TO")) && f % 6 == 0) {
                 dump(&nes, argv[2], f);
                 printf("trace f=%d x=%d y=%02X\n", f, mario_x(&nes), nes.ram[0xA2]);
+                int vis = 0;
+                for (int k = 0; k < 64; k++) if (nes.ppu.oam[k * 4] < 0xEF) vis++;
+                printf("  visible sprites=%d pc=%04X ppuctrl=%02X mask=%02X scroll=%02X/%02X timer=%02X%02X%02X\n",
+                       vis, nes.cpu.pc, nes.ppu.ctrl, nes.ppu.mask, nes.ram[0xFD], nes.ram[0xFC],
+                       nes.ram[0x5EE], nes.ram[0x5EF], nes.ram[0x5F0]);
             }
         }
         if (mario_x(&nes) > best_x) best_x = mario_x(&nes);

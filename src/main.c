@@ -6,7 +6,8 @@
  *                                         last frame; keys = "frame:hexmask,..."
  *
  * Keys: arrows = D-pad, Z = B, X = A, Enter = Start, Right Shift = Select,
- *       F1 = toggle the coordinate overlay (top-left), Esc = quit.
+ *       F1 = toggle the coordinate overlay, F2 = key settings, Esc = quit.
+ * Key bindings are saved in the SDL pref dir (keys.txt).
  */
 #define SDL_MAIN_HANDLED
 #include <SDL3/SDL.h>
@@ -56,18 +57,72 @@ static int run_headless(Nes *nes, int frames, const char *out, const char *keys)
     return 0;
 }
 
+/* ---- key bindings (editable in-game with F2, saved in the SDL pref dir) ---- */
+
+static const char *BTN_NAMES[8] = {"A", "B", "Select", "Start", "Up", "Down", "Left", "Right"};
+static const SDL_Scancode DEFAULT_KEYS[8] = {
+    SDL_SCANCODE_X, SDL_SCANCODE_Z, SDL_SCANCODE_RSHIFT, SDL_SCANCODE_RETURN,
+    SDL_SCANCODE_UP, SDL_SCANCODE_DOWN, SDL_SCANCODE_LEFT, SDL_SCANCODE_RIGHT};
+static SDL_Scancode keymap[8]; /* index = bit number of BTN_* */
+
+static void keys_path(char *out, size_t n) {
+    char *dir = SDL_GetPrefPath("nes-emu", "nes-emu");
+    snprintf(out, n, "%skeys.txt", dir ? dir : "");
+    SDL_free(dir);
+}
+
+static void keys_save(void) {
+    char path[1024];
+    keys_path(path, sizeof path);
+    FILE *f = fopen(path, "w");
+    if (!f) return;
+    for (int i = 0; i < 8; i++) fprintf(f, "%d\n", (int)keymap[i]);
+    fclose(f);
+}
+
+static void keys_load(void) {
+    for (int i = 0; i < 8; i++) keymap[i] = DEFAULT_KEYS[i];
+    char path[1024];
+    keys_path(path, sizeof path);
+    FILE *f = fopen(path, "r");
+    if (!f) return;
+    SDL_Scancode loaded[8];
+    for (int i = 0; i < 8; i++) {
+        int v;
+        if (fscanf(f, "%d", &v) != 1 || v <= 0 || v >= SDL_SCANCODE_COUNT) { fclose(f); return; }
+        loaded[i] = (SDL_Scancode)v;
+    }
+    fclose(f);
+    memcpy(keymap, loaded, sizeof keymap);
+}
+
 static uint8_t read_buttons(void) {
     const bool *k = SDL_GetKeyboardState(NULL);
     uint8_t b = 0;
-    if (k[SDL_SCANCODE_X]) b |= BTN_A;
-    if (k[SDL_SCANCODE_Z]) b |= BTN_B;
-    if (k[SDL_SCANCODE_RSHIFT]) b |= BTN_SELECT;
-    if (k[SDL_SCANCODE_RETURN]) b |= BTN_START;
-    if (k[SDL_SCANCODE_UP]) b |= BTN_UP;
-    if (k[SDL_SCANCODE_DOWN]) b |= BTN_DOWN;
-    if (k[SDL_SCANCODE_LEFT]) b |= BTN_LEFT;
-    if (k[SDL_SCANCODE_RIGHT]) b |= BTN_RIGHT;
+    for (int i = 0; i < 8; i++)
+        if (k[keymap[i]]) b |= (uint8_t)(1 << i);
     return b;
+}
+
+/* Draws the key-binding panel on top of the game (render scale 2: 8px font -> 16px). */
+static void draw_key_panel(SDL_Renderer *ren, int sel, bool waiting) {
+    SDL_SetRenderScale(ren, 2.0f, 2.0f);
+    SDL_SetRenderDrawColor(ren, 0, 0, 40, 255);
+    SDL_FRect box = {20, 20, 344, 160};
+    SDL_RenderFillRect(ren, &box);
+    SDL_SetRenderDrawColor(ren, 255, 255, 255, 255);
+    SDL_RenderDebugText(ren, 30, 28, "KEY SETTINGS");
+    for (int i = 0; i < 8; i++) {
+        char line[64];
+        const char *key = (waiting && i == sel) ? "press a key..." : SDL_GetScancodeName(keymap[i]);
+        snprintf(line, sizeof line, "%c %-7s %s", i == sel ? '>' : ' ', BTN_NAMES[i], key);
+        SDL_SetRenderDrawColor(ren, i == sel ? 255 : 200, i == sel ? 255 : 200, i == sel ? 0 : 200, 255);
+        SDL_RenderDebugText(ren, 30, 44 + i * 12, line);
+    }
+    SDL_SetRenderDrawColor(ren, 160, 220, 160, 255);
+    SDL_RenderDebugText(ren, 30, 144, "Up/Down choose  Enter rebind");
+    SDL_RenderDebugText(ren, 30, 156, "R reset  Esc/F2 close");
+    SDL_SetRenderScale(ren, 1.0f, 1.0f);
 }
 
 int main(int argc, char **argv) {
@@ -110,17 +165,34 @@ int main(int argc, char **argv) {
     /* Debug overlay (F1 toggles): Mario's world position, read from SMB3's RAM
      * ($75/$90 = X hi/lo, $87/$A2 = Y hi/lo). Only meaningful for SMB3. */
     bool show_coords = true;
+    keys_load();
+    bool config_open = false, waiting = false;
+    int sel = 0;
 
     bool running = true;
     while (running) {
         SDL_Event e;
         while (SDL_PollEvent(&e)) {
             if (e.type == SDL_EVENT_QUIT) running = false;
-            if (e.type == SDL_EVENT_KEY_DOWN && e.key.key == SDLK_ESCAPE) running = false;
-            if (e.type == SDL_EVENT_KEY_DOWN && e.key.key == SDLK_F1) show_coords = !show_coords;
+            if (e.type != SDL_EVENT_KEY_DOWN || e.key.repeat) continue;
+            SDL_Scancode sc = e.key.scancode;
+            if (config_open) {
+                if (waiting) {
+                    if (sc != SDL_SCANCODE_ESCAPE) { keymap[sel] = sc; keys_save(); }
+                    waiting = false;
+                } else if (sc == SDL_SCANCODE_ESCAPE || sc == SDL_SCANCODE_F2) config_open = false;
+                else if (sc == SDL_SCANCODE_UP) sel = (sel + 7) % 8;
+                else if (sc == SDL_SCANCODE_DOWN) sel = (sel + 1) % 8;
+                else if (sc == SDL_SCANCODE_RETURN) waiting = true;
+                else if (sc == SDL_SCANCODE_R) { memcpy(keymap, DEFAULT_KEYS, sizeof keymap); keys_save(); }
+                continue;
+            }
+            if (sc == SDL_SCANCODE_ESCAPE) running = false;
+            if (sc == SDL_SCANCODE_F1) show_coords = !show_coords;
+            if (sc == SDL_SCANCODE_F2) { config_open = true; waiting = false; }
         }
-        nes.buttons = read_buttons();
-        if (!nes_run_frame(&nes)) {
+        nes.buttons = config_open ? 0 : read_buttons();
+        if (!config_open && !nes_run_frame(&nes)) {
             fprintf(stderr, "CPU jammed at $%04X\n", nes.cpu.pc);
             break;
         }
@@ -146,6 +218,7 @@ int main(int argc, char **argv) {
             SDL_RenderDebugText(ren, 4, 4, text);
             SDL_SetRenderScale(ren, 1.0f, 1.0f);
         }
+        if (config_open) draw_key_panel(ren, sel, waiting);
         SDL_RenderPresent(ren);
     }
 
