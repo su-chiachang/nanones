@@ -20,6 +20,10 @@ static uint8_t scripted(int f) {
     return 0;
 }
 
+static uint8_t hist[20000]; /* buttons held on every emulated frame, saved for replay */
+static int hist_len;
+static void record(int f, uint8_t b) { if (f < (int)sizeof hist) { hist[f] = b; hist_len = f + 1; } }
+
 static int mario_x(const Nes *n) { return n->ram[0x75] * 256 + n->ram[0x90]; }
 
 static void dump(const Nes *n, const char *prefix, int frame) {
@@ -61,7 +65,7 @@ int main(int argc, char **argv) {
     if (nes_load(&nes, argv[1]) != 0) return 2;
 
     int f = 0;
-    for (; f < 1500; f++) { nes.buttons = scripted(f); nes_run_frame(&nes); }
+    for (; f < 1500; f++) { nes.buttons = scripted(f); record(f, nes.buttons); nes_run_frame(&nes); }
 
     int best_x = 0;
     while (f < total) {
@@ -69,6 +73,7 @@ int main(int argc, char **argv) {
             /* let the end-of-level sequence play out, pressing A now and then to skip screens */
             for (int i = 0; i < 900; i++, f++) {
                 nes.buttons = (i % 120) < 6 ? BTN_A : 0;
+                record(f, nes.buttons);
                 nes_run_frame(&nes);
                 if (i % 100 == 99) { dump(&nes, argv[2], f); printf("after level: frame %d dumped\n", f); }
             }
@@ -87,6 +92,7 @@ int main(int argc, char **argv) {
         }
         for (int i = 0; i < STEP; i++, f++) {
             nes.buttons = plan_buttons(&PLANS[best], i);
+            record(f, nes.buttons);
             nes_run_frame(&nes);
             if (f % 300 == 0) dump(&nes, argv[2], f);
             if (getenv("BOT_TRACE_FROM") && f >= atoi(getenv("BOT_TRACE_FROM")) && f < atoi(getenv("BOT_TRACE_TO")) && f % 6 == 0) {
@@ -97,10 +103,21 @@ int main(int argc, char **argv) {
                 printf("  visible sprites=%d pc=%04X ppuctrl=%02X mask=%02X scroll=%02X/%02X timer=%02X%02X%02X\n",
                        vis, nes.cpu.pc, nes.ppu.ctrl, nes.ppu.mask, nes.ram[0xFD], nes.ram[0xFC],
                        nes.ram[0x5EE], nes.ram[0x5EF], nes.ram[0x5F0]);
+                printf("  code@96F8:");
+                for (int k = 0; k < 10; k++) printf(" %02X", nes.cpu.read(nes.cpu.ctx, (uint16_t)(0x96F8 + k)));
+                printf("  irq=%d cart.irq=%d sp=%02X p=%02X zp00-1F:", nes.cpu.irq_line, nes.cart.irq, nes.cpu.sp, nes.cpu.p);
+                for (int k = 0; k < 32; k++) printf(" %02X", nes.ram[k]);
+                printf("\n");
             }
         }
         if (mario_x(&nes) > best_x) best_x = mario_x(&nes);
         if (f % 300 < STEP) printf("frame %d  x=%d  best=%d\n", f, mario_x(&nes), best_x);
+    }
+    {
+        char path[512];
+        snprintf(path, sizeof path, "%s.inp", argv[2]);
+        FILE *out = fopen(path, "wb");
+        if (out) { fwrite(hist, 1, (size_t)hist_len, out); fclose(out); printf("saved %d frames of input to %s\n", hist_len, path); }
     }
     printf("furthest x = %d\n", best_x);
     return 0;

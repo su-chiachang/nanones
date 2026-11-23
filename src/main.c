@@ -1,6 +1,7 @@
 /* nes-emu: SDL3 front end.
  *
  *   nes-emu game.nes                      play (Esc quits)
+ *   nes-emu game.nes --replay file.inp    play recorded input, then you take over
  *   nes-emu game.nes --headless N out.ppm [keys]
  *                                         run N frames without a window, dump the
  *                                         last frame; keys = "frame:hexmask,..."
@@ -134,6 +135,17 @@ int main(int argc, char **argv) {
     static Nes nes;
     if (nes_load(&nes, argv[1]) != 0) return 1;
 
+    /* --replay file.inp: feed recorded buttons (one byte per frame) to the window,
+     * then hand control back to the keyboard. */
+    static uint8_t replay[20000];
+    long replay_len = 0;
+    if (argc >= 4 && strcmp(argv[2], "--replay") == 0) {
+        FILE *rf = fopen(argv[3], "rb");
+        if (!rf) { perror(argv[3]); return 1; }
+        replay_len = (long)fread(replay, 1, sizeof replay, rf);
+        fclose(rf);
+    }
+
     if (argc >= 5 && strcmp(argv[2], "--headless") == 0) {
         int rc = run_headless(&nes, atoi(argv[3]), argv[4], argc > 5 ? argv[5] : NULL);
         nes_free(&nes);
@@ -169,8 +181,26 @@ int main(int argc, char **argv) {
     bool config_open = false, waiting = false;
     int sel = 0;
 
+    /* Pace on the wall clock, not on vsync: an unfocused or occluded window can
+     * present without blocking, which made emulation (and audio) run too fast. */
+    const double frame_ticks = (double)SDL_GetPerformanceFrequency() / 60.0988;
+    double next_frame = (double)SDL_GetPerformanceCounter();
+
+    /* NES_EMU_SECONDS=N: quit after N seconds and print the achieved frame rate (for checking pacing). */
+    const char *limit_env = getenv("NES_EMU_SECONDS");
+    double limit_s = limit_env ? atof(limit_env) : 0;
+    Uint64 t_start = SDL_GetPerformanceCounter();
+    long frames_run = 0;
+    long emu_frame = 0; /* emulated frames so far, indexes the replay */
+
     bool running = true;
     while (running) {
+        frames_run++;
+        if (limit_s > 0 && (double)(SDL_GetPerformanceCounter() - t_start) / (double)SDL_GetPerformanceFrequency() >= limit_s) {
+            fprintf(stderr, "%.2f fps over %.1f s\n", (double)frames_run * (double)SDL_GetPerformanceFrequency() /
+                    (double)(SDL_GetPerformanceCounter() - t_start), limit_s);
+            break;
+        }
         SDL_Event e;
         while (SDL_PollEvent(&e)) {
             if (e.type == SDL_EVENT_QUIT) running = false;
@@ -191,7 +221,10 @@ int main(int argc, char **argv) {
             if (sc == SDL_SCANCODE_F1) show_coords = !show_coords;
             if (sc == SDL_SCANCODE_F2) { config_open = true; waiting = false; }
         }
-        nes.buttons = config_open ? 0 : read_buttons();
+        if (config_open) nes.buttons = 0;
+        else if (emu_frame < replay_len) nes.buttons = replay[emu_frame];
+        else nes.buttons = read_buttons();
+        if (!config_open) emu_frame++;
         if (!config_open && !nes_run_frame(&nes)) {
             fprintf(stderr, "CPU jammed at $%04X\n", nes.cpu.pc);
             break;
@@ -220,6 +253,15 @@ int main(int argc, char **argv) {
         }
         if (config_open) draw_key_panel(ren, sel, waiting);
         SDL_RenderPresent(ren);
+
+        next_frame += frame_ticks;
+        double now = (double)SDL_GetPerformanceCounter();
+        bool audio_starved = audio && SDL_GetAudioStreamQueued(audio) < 1000 * (int)sizeof(float);
+        if (now < next_frame && !audio_starved) {
+            SDL_DelayPrecise((Uint64)((next_frame - now) * 1e9 / (double)SDL_GetPerformanceFrequency()));
+        } else if (now > next_frame + 5 * frame_ticks) {
+            next_frame = now; /* fell far behind (window drag, breakpoint): do not sprint to catch up */
+        }
     }
 
     if (audio) SDL_DestroyAudioStream(audio);
