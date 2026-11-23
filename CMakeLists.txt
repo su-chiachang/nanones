@@ -15,7 +15,12 @@ add_executable(cpu_interrupt_test tests/cpu_interrupt_test.c)
 target_compile_options(cpu_interrupt_test PRIVATE -Wall -Wextra)
 target_link_libraries(cpu_interrupt_test PRIVATE nescpu)
 
+add_executable(ppu_sprite_test tests/ppu_sprite_test.c)
+target_compile_options(ppu_sprite_test PRIVATE -Wall -Wextra)
+target_link_libraries(ppu_sprite_test PRIVATE nescpu)
+
 enable_testing()
+add_test(NAME ppu_sprite COMMAND ppu_sprite_test ${CMAKE_SOURCE_DIR}/tests/sprite_test.nes)
 add_test(NAME cpu_interrupt COMMAND cpu_interrupt_test)
 add_test(NAME nestest
          COMMAND nestest_runner

@@ -50,6 +50,13 @@ typedef struct Ppu {
     uint8_t nt_latch, at_latch, pat_lo_latch, pat_hi_latch;
     uint16_t sh_pat_lo, sh_pat_hi, sh_at_lo, sh_at_hi;
 
+    /* sprites for the scanline being drawn (filled at dot 257 of the previous line) */
+    struct {
+        uint8_t attr, x, lo, hi;
+    } spr[8];
+    int spr_count;
+    bool spr0_in_line; /* OAM sprite 0 is in spr[0] */
+
     /* outputs */
     bool nmi_edge;      /* raised on a rising NMI line; consumed by the system */
     bool frame_done;    /* set once per frame at the start of vblank */

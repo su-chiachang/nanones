@@ -199,6 +199,55 @@ static void fetch_step(Ppu *p, int dot) {
     }
 }
 
+static uint8_t reverse8(uint8_t b) {
+    b = (uint8_t)((b & 0xF0) >> 4 | (b & 0x0F) << 4);
+    b = (uint8_t)((b & 0xCC) >> 2 | (b & 0x33) << 2);
+    b = (uint8_t)((b & 0xAA) >> 1 | (b & 0x55) << 1);
+    return b;
+}
+
+/* Picks the sprites for scanline `line` and fetches their patterns.
+ * Unused slots still fetch tile $FF so the pattern bus (and later MMC3's A12
+ * counter) sees the same traffic as the real PPU. */
+static void eval_sprites(Ppu *p, int line) {
+    int height = (p->ctrl & PPUCTRL_SPRITE_SIZE) ? 16 : 8;
+    int count = 0;
+    p->spr0_in_line = false;
+
+    uint8_t sel[8][4];
+    for (int n = 0; n < 64; n++) {
+        int row = line - 1 - p->oam[n * 4];
+        if (row < 0 || row >= height) continue;
+        if (count == 8) { p->status |= PPUSTATUS_OVERFLOW; break; }
+        memcpy(sel[count], &p->oam[n * 4], 4);
+        if (n == 0) p->spr0_in_line = true;
+        count++;
+    }
+
+    for (int i = 0; i < 8; i++) {
+        uint8_t tile = 0xFF, attr = 0, x = 0xFF;
+        int row = 0;
+        if (i < count) {
+            tile = sel[i][1]; attr = sel[i][2]; x = sel[i][3];
+            row = line - 1 - sel[i][0];
+            if (attr & 0x80) row = height - 1 - row; /* vertical flip */
+        }
+        uint16_t addr;
+        if (height == 8) {
+            addr = (uint16_t)(((p->ctrl & PPUCTRL_SPRITE_TABLE) ? 0x1000 : 0) + tile * 16 + row);
+        } else {
+            addr = (uint16_t)(((tile & 1) ? 0x1000 : 0) + (tile & 0xFE) * 16 +
+                              (row & 7) + (row & 8 ? 16 : 0));
+        }
+        uint8_t lo = mem_read(p, addr), hi = mem_read(p, (uint16_t)(addr + 8));
+        if (i >= count) lo = hi = 0;
+        if (attr & 0x40) { lo = reverse8(lo); hi = reverse8(hi); } /* horizontal flip */
+        p->spr[i].attr = attr; p->spr[i].x = x;
+        p->spr[i].lo = lo; p->spr[i].hi = hi;
+    }
+    p->spr_count = count;
+}
+
 static void draw_pixel(Ppu *p, int x, int y) {
     uint8_t pixel = 0, pal = 0;
     if ((p->mask & PPUMASK_BG) && (x >= 8 || (p->mask & PPUMASK_BG_LEFT))) {
@@ -206,7 +255,23 @@ static void draw_pixel(Ppu *p, int x, int y) {
         pixel = (uint8_t)((((p->sh_pat_hi & bit) ? 1 : 0) << 1) | ((p->sh_pat_lo & bit) ? 1 : 0));
         pal = (uint8_t)((((p->sh_at_hi & bit) ? 1 : 0) << 1) | ((p->sh_at_lo & bit) ? 1 : 0));
     }
-    uint8_t idx = p->palette[pixel ? (pal << 2) | pixel : 0] & 0x3F;
+    uint8_t color = pixel ? (uint8_t)((pal << 2) | pixel) : 0;
+
+    if ((p->mask & PPUMASK_SPR) && (x >= 8 || (p->mask & PPUMASK_SPR_LEFT))) {
+        for (int i = 0; i < p->spr_count; i++) {
+            int col = x - p->spr[i].x;
+            if (col < 0 || col > 7) continue;
+            uint8_t sp = (uint8_t)((((p->spr[i].hi >> (7 - col)) & 1) << 1) |
+                                   ((p->spr[i].lo >> (7 - col)) & 1));
+            if (!sp) continue;
+            if (i == 0 && p->spr0_in_line && pixel && x != 255)
+                p->status |= PPUSTATUS_SPRITE0;
+            if (!(p->spr[i].attr & 0x20) || !pixel)
+                color = (uint8_t)(0x10 | ((p->spr[i].attr & 3) << 2) | sp);
+            break; /* the first opaque sprite pixel wins */
+        }
+    }
+    uint8_t idx = p->palette[color] & 0x3F;
     if (p->mask & PPUMASK_GRAY) idx &= 0x30;
     p->fb[y * PPU_W + x] = 0xFF000000u | SYSTEM_PALETTE[idx];
 }
@@ -224,6 +289,7 @@ void ppu_tick(Ppu *p) {
             }
             if (d == 256) inc_y(p);
             if (d == 257) copy_x(p);
+            if (d == 260) eval_sprites(p, sl == 261 ? 0 : sl + 1);
             if (d == 338 || d == 340)
                 p->nt_latch = mem_read(p, (uint16_t)(0x2000 | (p->v & 0x0FFF)));
             if (sl == 261 && d >= 280 && d <= 304) copy_y(p);
