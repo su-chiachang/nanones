@@ -89,6 +89,10 @@ int main(int argc, char **argv) {
             nes.buttons = plan_buttons(&PLANS[best], i);
             nes_run_frame(&nes);
             if (f % 300 == 0) dump(&nes, argv[2], f);
+            if (getenv("BOT_TRACE_FROM") && f >= atoi(getenv("BOT_TRACE_FROM")) && f < atoi(getenv("BOT_TRACE_TO")) && f % 6 == 0) {
+                dump(&nes, argv[2], f);
+                printf("trace f=%d x=%d y=%02X\n", f, mario_x(&nes), nes.ram[0xA2]);
+            }
         }
         if (mario_x(&nes) > best_x) best_x = mario_x(&nes);
         if (f % 300 < STEP) printf("frame %d  x=%d  best=%d\n", f, mario_x(&nes), best_x);

@@ -5,7 +5,8 @@
  *                                         run N frames without a window, dump the
  *                                         last frame; keys = "frame:hexmask,..."
  *
- * Keys: arrows = D-pad, Z = B, X = A, Enter = Start, Right Shift = Select.
+ * Keys: arrows = D-pad, Z = B, X = A, Enter = Start, Right Shift = Select,
+ *       F1 = toggle the coordinate overlay (top-left), Esc = quit.
  */
 #define SDL_MAIN_HANDLED
 #include <SDL3/SDL.h>
@@ -106,12 +107,17 @@ int main(int argc, char **argv) {
     if (audio) SDL_ResumeAudioStreamDevice(audio);
     else fprintf(stderr, "audio disabled: %s\n", SDL_GetError());
 
+    /* Debug overlay (F1 toggles): Mario's world position, read from SMB3's RAM
+     * ($75/$90 = X hi/lo, $87/$A2 = Y hi/lo). Only meaningful for SMB3. */
+    bool show_coords = true;
+
     bool running = true;
     while (running) {
         SDL_Event e;
         while (SDL_PollEvent(&e)) {
             if (e.type == SDL_EVENT_QUIT) running = false;
             if (e.type == SDL_EVENT_KEY_DOWN && e.key.key == SDLK_ESCAPE) running = false;
+            if (e.type == SDL_EVENT_KEY_DOWN && e.key.key == SDLK_F1) show_coords = !show_coords;
         }
         nes.buttons = read_buttons();
         if (!nes_run_frame(&nes)) {
@@ -128,6 +134,18 @@ int main(int argc, char **argv) {
         SDL_UpdateTexture(tex, NULL, nes.ppu.fb, PPU_W * 4);
         SDL_RenderClear(ren);
         SDL_RenderTexture(ren, tex, NULL, NULL);
+        if (show_coords) {
+            char text[48];
+            snprintf(text, sizeof text, "X:%d Y:%d", nes.ram[0x75] * 256 + nes.ram[0x90],
+                     nes.ram[0x87] * 256 + nes.ram[0xA2]);
+            SDL_SetRenderScale(ren, 2.0f, 2.0f);
+            SDL_SetRenderDrawColor(ren, 0, 0, 0, 255);
+            SDL_FRect bg = {2, 2, (float)(strlen(text) * 8 + 4), 12};
+            SDL_RenderFillRect(ren, &bg);
+            SDL_SetRenderDrawColor(ren, 255, 255, 0, 255);
+            SDL_RenderDebugText(ren, 4, 4, text);
+            SDL_SetRenderScale(ren, 1.0f, 1.0f);
+        }
         SDL_RenderPresent(ren);
     }
 
