@@ -1,6 +1,7 @@
 #ifndef NES_NES_H
 #define NES_NES_H
 
+#include "apu.h"
 #include "cart.h"
 #include "cpu.h"
 #include "ppu.h"
@@ -14,6 +15,7 @@ enum {
 typedef struct Nes {
     Cpu cpu;
     Ppu ppu;
+    Apu apu;
     Cart cart;
     uint8_t ram[0x800];
 

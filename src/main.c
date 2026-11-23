@@ -68,7 +68,7 @@ int main(int argc, char **argv) {
     }
 
     SDL_SetMainReady();
-    if (!SDL_Init(SDL_INIT_VIDEO)) {
+    if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO)) {
         fprintf(stderr, "SDL_Init failed: %s\n", SDL_GetError());
         return 1;
     }
@@ -84,6 +84,11 @@ int main(int argc, char **argv) {
     SDL_SetTextureScaleMode(tex, SDL_SCALEMODE_NEAREST);
     SDL_SetRenderVSync(ren, 1);
 
+    SDL_AudioSpec spec = {SDL_AUDIO_F32, 1, 48000};
+    SDL_AudioStream *audio = SDL_OpenAudioDeviceStream(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK, &spec, NULL, NULL);
+    if (audio) SDL_ResumeAudioStreamDevice(audio);
+    else fprintf(stderr, "audio disabled: %s\n", SDL_GetError());
+
     bool running = true;
     while (running) {
         SDL_Event e;
@@ -96,12 +101,20 @@ int main(int argc, char **argv) {
             fprintf(stderr, "CPU jammed at $%04X\n", nes.cpu.pc);
             break;
         }
+        if (audio) {
+            static float samples[APU_RING];
+            size_t n = apu_read_samples(&nes.apu, samples, APU_RING);
+            /* keep the queue short so sound does not lag behind the picture */
+            if (SDL_GetAudioStreamQueued(audio) < 48000 / 10 * (int)sizeof(float))
+                SDL_PutAudioStreamData(audio, samples, (int)(n * sizeof(float)));
+        }
         SDL_UpdateTexture(tex, NULL, nes.ppu.fb, PPU_W * 4);
         SDL_RenderClear(ren);
         SDL_RenderTexture(ren, tex, NULL, NULL);
         SDL_RenderPresent(ren);
     }
 
+    if (audio) SDL_DestroyAudioStream(audio);
     SDL_DestroyTexture(tex);
     SDL_DestroyRenderer(ren);
     SDL_DestroyWindow(win);

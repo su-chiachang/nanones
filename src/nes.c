@@ -11,7 +11,8 @@ static uint8_t bus_read(void *ctx, uint16_t addr) {
         if (!n->pad_strobe) n->pad_shift = (uint8_t)((n->pad_shift >> 1) | 0x80);
         return (uint8_t)(0x40 | bit); /* bit 6 mimics open bus on the data lines */
     }
-    if (addr < 0x4020) return 0; /* APU / second pad: not implemented yet */
+    if (addr == 0x4015) return apu_read_status(&n->apu);
+    if (addr < 0x4020) return 0; /* second pad: not implemented */
     return n->cart.cpu_read(&n->cart, addr);
 }
 
@@ -26,19 +27,22 @@ static void bus_write(void *ctx, uint16_t addr, uint8_t v) {
         n->dma_stall = 513 + (int)(n->cpu.cycles & 1);
         return;
     }
-    if (addr == 0x4016) {
+    if (addr == 0x4016) { /* strobe */
         n->pad_strobe = v & 1;
         if (n->pad_strobe) n->pad_shift = n->buttons;
         return;
     }
-    if (addr < 0x4020) return; /* APU: not implemented yet */
+    if (addr < 0x4020) { apu_write(&n->apu, addr, v); return; }
     n->cart.cpu_write(&n->cart, addr, v);
 }
+
+static uint8_t dmc_read(void *ctx, uint16_t addr) { return bus_read(ctx, addr); }
 
 int nes_load(Nes *n, const char *rom_path) {
     memset(n, 0, sizeof *n);
     if (cart_load(&n->cart, rom_path) != 0) return -1;
     ppu_init(&n->ppu, &n->cart);
+    apu_init(&n->apu, 48000.0, dmc_read, n);
     cpu_init(&n->cpu, bus_read, bus_write, n);
     nes_reset(n);
     return 0;
@@ -64,8 +68,9 @@ int nes_step(Nes *n) {
         n->cpu.cycles += (uint64_t)n->dma_stall;
         n->dma_stall = 0;
     }
+    for (int i = 0; i < cycles; i++) apu_tick(&n->apu);
     for (int i = 0; i < cycles * 3; i++) ppu_tick(&n->ppu);
-    n->cpu.irq_line = n->cart.irq;
+    n->cpu.irq_line = n->cart.irq || apu_irq(&n->apu);
     if (n->ppu.nmi_edge) {
         n->ppu.nmi_edge = false;
         cpu_nmi(&n->cpu);

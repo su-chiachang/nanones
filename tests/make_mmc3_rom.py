@@ -17,6 +17,7 @@ def asm(base):
 # ---- reset code at $E000 ----
 code, emit, lda, sta, poke = asm(0xE000)
 emit(0x78, 0xD8, 0xA2, 0xFF, 0x9A)
+poke(0x4017, 0x40)                       # inhibit the APU frame IRQ (it is enabled at power-on)
 w = len(code); emit(0x2C, 0x02, 0x20); emit(0x10, (w - (len(code) + 2)) & 0xFF)
 # CHR banking: R2 (1K at $0000 .. wait: bank_select 0 -> R0/R1 at $0000/$0800 (2K each).
 poke(0x8000, 0); poke(0x8001, 10)        # R0 = 10 -> 2K banks 10,11 at $0000-$07FF (tile 1 lives in bank 11 -> slot offset)

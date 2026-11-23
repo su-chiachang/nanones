@@ -4,7 +4,7 @@ project(nes-emu C)
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 
-add_library(nescpu STATIC src/cpu.c src/cart.c src/ppu.c src/nes.c)
+add_library(nescpu STATIC src/cpu.c src/apu.c src/cart.c src/ppu.c src/nes.c)
 target_compile_options(nescpu PRIVATE -Wall -Wextra)
 
 add_executable(nestest_runner tests/nestest_runner.c)
@@ -23,7 +23,12 @@ add_executable(mmc3_irq_test tests/mmc3_irq_test.c)
 target_compile_options(mmc3_irq_test PRIVATE -Wall -Wextra)
 target_link_libraries(mmc3_irq_test PRIVATE nescpu)
 
+add_executable(apu_test tests/apu_test.c)
+target_compile_options(apu_test PRIVATE -Wall -Wextra)
+target_link_libraries(apu_test PRIVATE nescpu m)
+
 enable_testing()
+add_test(NAME apu COMMAND apu_test)
 add_test(NAME mmc3_irq COMMAND mmc3_irq_test ${CMAKE_SOURCE_DIR}/tests/mmc3_irq_test.nes)
 add_test(NAME ppu_sprite COMMAND ppu_sprite_test ${CMAKE_SOURCE_DIR}/tests/sprite_test.nes)
 add_test(NAME cpu_interrupt COMMAND cpu_interrupt_test)
