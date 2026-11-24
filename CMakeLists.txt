@@ -4,8 +4,10 @@ project(nes-emu C)
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 
-add_library(nescpu STATIC src/cpu.c src/apu.c src/cart.c src/ppu.c src/nes.c)
+find_package(ZLIB REQUIRED)
+add_library(nescpu STATIC src/cpu.c src/apu.c src/cart.c src/ppu.c src/nes.c src/zip.c)
 target_compile_options(nescpu PRIVATE -Wall -Wextra)
+target_link_libraries(nescpu PUBLIC ZLIB::ZLIB)
 
 add_executable(nestest_runner tests/nestest_runner.c)
 target_compile_options(nestest_runner PRIVATE -Wall -Wextra)
@@ -38,6 +40,18 @@ add_test(NAME apu COMMAND apu_test)
 add_test(NAME mmc3_irq COMMAND mmc3_irq_test ${CMAKE_SOURCE_DIR}/tests/mmc3_irq_test.nes)
 add_test(NAME ppu_sprite COMMAND ppu_sprite_test ${CMAKE_SOURCE_DIR}/tests/sprite_test.nes)
 add_test(NAME cpu_interrupt COMMAND cpu_interrupt_test)
+# Loading ROMs from zip archives: deflated, stored, and with macOS metadata decoys.
+find_package(Python3 COMPONENTS Interpreter)
+if(Python3_FOUND)
+  add_test(NAME zip_make
+           COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tests/make_zip_roms.py
+                   ${CMAKE_SOURCE_DIR}/tests/sprite_test.nes ${CMAKE_BINARY_DIR}/zip_roms)
+  set_tests_properties(zip_make PROPERTIES FIXTURES_SETUP zip_roms)
+  foreach(kind deflate stored macos)
+    add_test(NAME zip_${kind} COMMAND ppu_sprite_test ${CMAKE_BINARY_DIR}/zip_roms/${kind}.zip)
+    set_tests_properties(zip_${kind} PROPERTIES FIXTURES_REQUIRED zip_roms)
+  endforeach()
+endif()
 # Third-party ROMs are not stored in the repo: run tests/fetch_test_roms.sh first.
 if(EXISTS ${CMAKE_SOURCE_DIR}/tests/nestest.nes)
   add_test(NAME nestest

@@ -4,6 +4,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "zip.h"
+
 /* ---- mapper 0: NROM ---- */
 
 static uint8_t nrom_cpu_read(Cart *c, uint16_t a) {
@@ -120,21 +122,17 @@ static void mmc3_observe(Cart *c, uint16_t a) {
 
 static bool is_pow2(size_t n) { return n && !(n & (n - 1)); }
 
-int cart_load(Cart *c, const char *path) {
+/* Parses an iNES image held in memory; path is only used in messages. */
+static int cart_load_mem(Cart *c, const uint8_t *buf, size_t len, const char *path) {
     memset(c, 0, sizeof *c);
 
-    FILE *f = fopen(path, "rb");
-    if (!f) { perror(path); return -1; }
-
-    uint8_t h[16];
-    if (fread(h, 1, 16, f) != 16 || memcmp(h, "NES\x1A", 4) != 0) {
+    const uint8_t *h = buf;
+    if (len < 16 || memcmp(h, "NES\x1A", 4) != 0) {
         fprintf(stderr, "%s: not an iNES file\n", path);
-        fclose(f);
         return -1;
     }
     if ((h[7] & 0x0C) == 0x08) {
         fprintf(stderr, "%s: NES 2.0 headers are not supported yet\n", path);
-        fclose(f);
         return -1;
     }
 
@@ -143,38 +141,38 @@ int cart_load(Cart *c, const char *path) {
     else if (h[6] & 0x01) c->mirroring = MIRROR_VERTICAL;
     else                  c->mirroring = MIRROR_HORIZONTAL;
 
-    if (h[6] & 0x04) fseek(f, 512, SEEK_CUR); /* skip trainer */
+    size_t off = 16;
+    if (h[6] & 0x04) off += 512; /* skip trainer */
 
     c->prg_size = (size_t)h[4] * 0x4000;
     c->chr_size = (size_t)h[5] * 0x2000;
     if (c->prg_size == 0) {
         fprintf(stderr, "%s: no PRG ROM\n", path);
-        fclose(f);
         return -1;
     }
 
-    c->prg = malloc(c->prg_size);
-    if (!c->prg || fread(c->prg, 1, c->prg_size, f) != c->prg_size) {
+    if (off > len || len - off < c->prg_size) {
         fprintf(stderr, "%s: truncated PRG ROM\n", path);
-        fclose(f);
-        cart_free(c);
         return -1;
     }
+    c->prg = malloc(c->prg_size);
+    if (!c->prg) return -1;
+    memcpy(c->prg, buf + off, c->prg_size);
+    off += c->prg_size;
 
     if (c->chr_size == 0) {
         c->chr_is_ram = true;
         c->chr_size = 0x2000;
         c->chr = calloc(1, c->chr_size);
     } else {
-        c->chr = malloc(c->chr_size);
-        if (c->chr && fread(c->chr, 1, c->chr_size, f) != c->chr_size) {
+        if (len - off < c->chr_size) {
             fprintf(stderr, "%s: truncated CHR ROM\n", path);
-            fclose(f);
             cart_free(c);
             return -1;
         }
+        c->chr = malloc(c->chr_size);
+        if (c->chr) memcpy(c->chr, buf + off, c->chr_size);
     }
-    fclose(f);
     if (!c->chr) { cart_free(c); return -1; }
 
     switch (c->mapper) {
@@ -214,6 +212,49 @@ int cart_load(Cart *c, const char *path) {
         return -1;
     }
     return 0;
+}
+
+int cart_load(Cart *c, const char *path) {
+    memset(c, 0, sizeof *c);
+
+    FILE *f = fopen(path, "rb");
+    if (!f) { perror(path); return -1; }
+    uint8_t *buf = NULL;
+    size_t len = 0, cap = 0;
+    for (;;) {
+        if (len == cap) {
+            cap = cap ? cap * 2 : 1 << 20;
+            if (cap > 64u << 20) { fprintf(stderr, "%s: file too large\n", path); break; }
+            uint8_t *nb = realloc(buf, cap);
+            if (!nb) break;
+            buf = nb;
+        }
+        size_t n = fread(buf + len, 1, cap - len, f);
+        len += n;
+        if (n == 0) break;
+    }
+    int err = ferror(f) || !feof(f);
+    fclose(f);
+    if (err) { free(buf); fprintf(stderr, "%s: could not read file\n", path); return -1; }
+
+    int r;
+    if (zip_is_zip(buf, len)) {
+        uint8_t *rom;
+        size_t rom_len, name_len;
+        const char *name;
+        if (zip_extract_rom(buf, len, path, &rom, &rom_len, &name, &name_len) != 0) {
+            free(buf);
+            return -1;
+        }
+        char label[512];
+        snprintf(label, sizeof label, "%s:%.*s", path, (int)name_len, name);
+        r = cart_load_mem(c, rom, rom_len, label);
+        free(rom);
+    } else {
+        r = cart_load_mem(c, buf, len, path);
+    }
+    free(buf);
+    return r;
 }
 
 void cart_free(Cart *c) {

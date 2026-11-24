@@ -6,6 +6,8 @@
  *                                         run N frames without a window, dump the
  *                                         last frame; keys = "frame:hexmask,..."
  *
+ * game.nes may also be a .zip holding the ROM.
+ *
  * Keys: arrows = D-pad, Z = B, X = A, Enter = Start, Right Shift = Select,
  *       F1 = toggle the coordinate overlay, F2 = key settings, Esc = quit.
  * Key bindings are saved in the SDL pref dir (keys.txt).
@@ -128,7 +130,7 @@ static void draw_key_panel(SDL_Renderer *ren, int sel, bool waiting) {
 
 int main(int argc, char **argv) {
     if (argc < 2) {
-        fprintf(stderr, "usage: %s game.nes [--headless frames out.ppm]\n", argv[0]);
+        fprintf(stderr, "usage: %s game.nes|game.zip [--headless frames out.ppm]\n", argv[0]);
         return 2;
     }
 

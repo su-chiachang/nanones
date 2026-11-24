@@ -10,14 +10,15 @@ A NES emulator written in C, built step by step (CPU, PPU, APU, MMC3) with the g
 
 ## Build & run
 
-Needs CMake and SDL3 (`brew install cmake sdl3`).
+Needs CMake, SDL3 and zlib (zlib ships with macOS) (`brew install cmake sdl3`).
 
 ```sh
 cmake -S . -B build && cmake --build build
 ./build/nes-emu game.nes
 ```
 
-You must supply your own legally obtained ROM; none is included.
+The ROM may be an iNES `.nes` file or a `.zip` containing one (stored or deflated; the first
+`.nes` entry is used). You must supply your own legally obtained ROM; none is included.
 
 Keys: arrows = D-pad, Z = B, X = A, Enter = Start, Right Shift = Select.
 F1 toggles the coordinate overlay (SMB3 only), F2 opens key settings, Esc quits.
