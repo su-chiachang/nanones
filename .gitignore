@@ -3,3 +3,4 @@ build/
 tests/roms/
 tests/nestest.nes
 tests/nestest.log
+roms/
