@@ -26,6 +26,8 @@ The ROM may be an iNES `.nes` file or a `.zip` containing one (stored or deflate
 
 Keys: arrows = D-pad, Z = B, X = A, Enter = Start, Right Shift = Select.
 F1 toggles the coordinate overlay (SMB3 only), F2 opens key settings, Esc quits.
+F5 saves a state, F7 loads it, F6 picks the slot (0-9); states are stored next to the ROM
+(`roms/dq4.st0` …) and only load in the same build with the same ROM.
 `--headless N out.ppm "frame:hexmask,..."` runs without a window; `--replay file.inp` replays recorded input.
 
 ## Tests

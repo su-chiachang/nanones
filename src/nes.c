@@ -1,7 +1,9 @@
 #include "nes.h"
 
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <zlib.h>
 
 #ifndef PPU_ALIGN
 #define PPU_ALIGN 1
@@ -184,4 +186,104 @@ bool nes_run_frame(Nes *n) {
         if (n->cpu.jammed) return false;
     }
     return true;
+}
+
+/* ---- save states ---- */
+
+#define STATE_MAGIC "NANOSTA1"
+
+typedef struct {
+    char magic[8];
+    uint32_t nes_size;    /* sizeof(Nes): changes whenever the layout does */
+    uint32_t mstate_size;
+    uint32_t chr_ram_size;
+    uint32_t mapper;
+    uint32_t rom_crc;     /* CRC-32 of PRG + CHR ROM */
+} StateHeader;
+
+static uint32_t rom_crc(const Cart *c) {
+    uLong crc = crc32(0, Z_NULL, 0);
+    crc = crc32(crc, c->prg, (uInt)c->prg_size);
+    if (!c->chr_is_ram) crc = crc32(crc, c->chr, (uInt)c->chr_size);
+    return (uint32_t)crc;
+}
+
+static StateHeader state_header(const Nes *n) {
+    StateHeader h;
+    memset(&h, 0, sizeof h);
+    memcpy(h.magic, STATE_MAGIC, 8);
+    h.nes_size = (uint32_t)sizeof *n;
+    h.mstate_size = (uint32_t)n->cart.mstate_size;
+    h.chr_ram_size = n->cart.chr_is_ram ? (uint32_t)n->cart.chr_size : 0;
+    h.mapper = (uint32_t)n->cart.mapper;
+    h.rom_crc = rom_crc(&n->cart);
+    return h;
+}
+
+int nes_save_state(const Nes *n, const char *path) {
+    StateHeader h = state_header(n);
+    char tmp[1024];
+    snprintf(tmp, sizeof tmp, "%s.tmp", path);
+    FILE *f = fopen(tmp, "wb");
+    if (!f) { perror(tmp); return -1; }
+    bool ok = fwrite(&h, sizeof h, 1, f) == 1 && fwrite(n, sizeof *n, 1, f) == 1;
+    if (ok && h.mstate_size) ok = fwrite(n->cart.mstate, h.mstate_size, 1, f) == 1;
+    if (ok && h.chr_ram_size) ok = fwrite(n->cart.chr, h.chr_ram_size, 1, f) == 1;
+    ok = fclose(f) == 0 && ok;
+    if (!ok || rename(tmp, path) != 0) {
+        perror(path);
+        remove(tmp);
+        return -1;
+    }
+    return 0;
+}
+
+int nes_load_state(Nes *n, const char *path) {
+    FILE *f = fopen(path, "rb");
+    if (!f) { perror(path); return -1; }
+    StateHeader want = state_header(n), got;
+    Nes *s = malloc(sizeof *s);
+    void *mstate = want.mstate_size ? malloc(want.mstate_size) : NULL;
+    uint8_t *chr = want.chr_ram_size ? malloc(want.chr_ram_size) : NULL;
+    const char *err = NULL;
+    if (!s || (want.mstate_size && !mstate) || (want.chr_ram_size && !chr)) err = "out of memory";
+    else if (fread(&got, sizeof got, 1, f) != 1 || memcmp(got.magic, STATE_MAGIC, 8) != 0)
+        err = "not a save state";
+    else if (got.rom_crc != want.rom_crc || got.mapper != want.mapper)
+        err = "save state is for a different ROM";
+    else if (memcmp(&got, &want, sizeof got) != 0)
+        err = "save state is from an incompatible build";
+    else if (fread(s, sizeof *s, 1, f) != 1 ||
+             (mstate && fread(mstate, want.mstate_size, 1, f) != 1) ||
+             (chr && fread(chr, want.chr_ram_size, 1, f) != 1))
+        err = "truncated save state";
+    fclose(f);
+    if (err) {
+        fprintf(stderr, "%s: %s\n", path, err);
+        free(s); free(mstate); free(chr);
+        return -1;
+    }
+
+    /* Keep this process's pointers; take every other byte from the file. */
+    s->cpu.read = n->cpu.read;
+    s->cpu.write = n->cpu.write;
+    s->cpu.nmi_poll = n->cpu.nmi_poll;
+    s->cpu.ctx = n;
+    s->apu.dmc_read = n->apu.dmc_read;
+    s->apu.ctx = n;
+    s->ppu.cart = &n->cart;
+    Cart *sc = &s->cart, *lc = &n->cart;
+    sc->prg = lc->prg;
+    sc->chr = lc->chr;
+    sc->mstate = lc->mstate;
+    sc->cpu_read = lc->cpu_read;
+    sc->cpu_write = lc->cpu_write;
+    sc->ppu_read = lc->ppu_read;
+    sc->ppu_write = lc->ppu_write;
+    sc->ppu_observe = lc->ppu_observe;
+    if (mstate) memcpy(lc->mstate, mstate, want.mstate_size);
+    if (chr) memcpy(lc->chr, chr, want.chr_ram_size);
+    memcpy(n, s, sizeof *n);
+    free(s); free(mstate); free(chr);
+    return 0;
 }

@@ -37,6 +37,10 @@ add_executable(mapper_test tests/mapper_test.c)
 target_compile_options(mapper_test PRIVATE -Wall -Wextra)
 target_link_libraries(mapper_test PRIVATE nescpu)
 
+add_executable(state_test tests/state_test.c)
+target_compile_options(state_test PRIVATE -Wall -Wextra)
+target_link_libraries(state_test PRIVATE nescpu)
+
 add_executable(smb3_bot tests/smb3_bot.c)
 target_link_libraries(smb3_bot PRIVATE nescpu)
 
@@ -49,6 +53,9 @@ add_test(NAME mmc3_irq COMMAND mmc3_irq_test ${CMAKE_SOURCE_DIR}/tests/mmc3_irq_
 add_test(NAME ppu_sprite COMMAND ppu_sprite_test ${CMAKE_SOURCE_DIR}/tests/sprite_test.nes)
 add_test(NAME cpu_interrupt COMMAND cpu_interrupt_test)
 add_test(NAME mappers COMMAND mapper_test)
+# MMC3 ROM: covers mapper state and IRQ; the sprite ROM is the "other ROM".
+add_test(NAME save_state COMMAND state_test ${CMAKE_SOURCE_DIR}/tests/mmc3_irq_test.nes
+                                            ${CMAKE_SOURCE_DIR}/tests/sprite_test.nes ${CMAKE_BINARY_DIR})
 add_test(NAME sram COMMAND sram_test ${CMAKE_SOURCE_DIR}/tests/sprite_test.nes ${CMAKE_BINARY_DIR})
 # Loading ROMs from zip archives (deflated, stored, macOS metadata decoys) and NES 2.0 headers.
 find_package(Python3 COMPONENTS Interpreter)

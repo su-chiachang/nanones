@@ -37,6 +37,13 @@ void nes_reset(Nes *n);
  * ROM data is shared with `src`, so never nes_free() a clone. For search/tools. */
 void nes_clone(Nes *dst, const Nes *src);
 
+/* Save states: the whole machine (CPU, PPU, APU, RAM, mapper state, PRG-RAM,
+ * CHR-RAM) in one file. The format is a raw struct dump tied to this build
+ * and to the loaded ROM (checked by CRC); a mismatch is refused, not loaded.
+ * Both return 0 on success, -1 after printing a message to stderr. */
+int nes_save_state(const Nes *n, const char *path);
+int nes_load_state(Nes *n, const char *path);
+
 /* Runs one CPU instruction and the matching PPU dots. Returns CPU cycles used. */
 int nes_step(Nes *n);
 

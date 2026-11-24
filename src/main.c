@@ -9,14 +9,17 @@
  * game.nes may also be a .zip holding the ROM.
  * Battery-backed games keep their save next to the ROM (game.sav); it is
  * written when it changes (checked once a second) and on quit. --headless
- * neither reads nor writes it.
+ * neither reads nor writes it. Save states go next to the ROM too
+ * (game.st0 ... game.st9).
  *
  * Keys: arrows = D-pad, Z = B, X = A, Enter = Start, Right Shift = Select,
- *       F1 = toggle the coordinate overlay, F2 = key settings, Esc = quit.
+ *       F1 = toggle the coordinate overlay, F2 = key settings, Esc = quit,
+ *       F5 = save state, F7 = load state, F6 = next state slot (0-9).
  * Key bindings are saved in the SDL pref dir (keys.txt).
  */
 #define SDL_MAIN_HANDLED
 #include <SDL3/SDL.h>
+#include <unistd.h>
 #include <SDL3/SDL_main.h>
 
 #include "nes.h"
@@ -131,6 +134,25 @@ static void draw_key_panel(SDL_Renderer *ren, int sel, bool waiting) {
     SDL_SetRenderScale(ren, 1.0f, 1.0f);
 }
 
+/* game.zip -> game.st<slot>, next to the ROM like the .sav file. */
+static void state_path(const char *rom, int slot, char *out, size_t size) {
+    cart_sram_path(rom, out, size);         /* ".../game.sav" */
+    size_t len = strlen(out);
+    if (len >= 4) snprintf(out + len - 4, size - (len - 4), ".st%d", slot);
+}
+
+/* A short message in the bottom-left corner. */
+static void draw_toast(SDL_Renderer *ren, const char *text) {
+    float y = (float)(PPU_H * SCALE) / 2.0f - 16.0f;
+    SDL_SetRenderScale(ren, 2.0f, 2.0f);
+    SDL_SetRenderDrawColor(ren, 0, 0, 0, 255);
+    SDL_FRect bg = {2, y - 2, (float)(strlen(text) * 8 + 4), 12};
+    SDL_RenderFillRect(ren, &bg);
+    SDL_SetRenderDrawColor(ren, 255, 255, 255, 255);
+    SDL_RenderDebugText(ren, 4, y, text);
+    SDL_SetRenderScale(ren, 1.0f, 1.0f);
+}
+
 int main(int argc, char **argv) {
     if (argc < 2) {
         fprintf(stderr, "usage: %s game.nes|game.zip [--headless frames out.ppm]\n", argv[0]);
@@ -194,6 +216,9 @@ int main(int argc, char **argv) {
     keys_load();
     bool config_open = false, waiting = false;
     int sel = 0;
+    int slot = 0;
+    char toast[64] = "";
+    Uint64 toast_until = 0;
 
     /* Pace on the wall clock, not on vsync: an unfocused or occluded window can
      * present without blocking, which made emulation (and audio) run too fast. */
@@ -234,6 +259,20 @@ int main(int argc, char **argv) {
             if (sc == SDL_SCANCODE_ESCAPE) running = false;
             if (sc == SDL_SCANCODE_F1) show_coords = !show_coords;
             if (sc == SDL_SCANCODE_F2) { config_open = true; waiting = false; }
+            if (sc == SDL_SCANCODE_F5 || sc == SDL_SCANCODE_F6 || sc == SDL_SCANCODE_F7) {
+                char path[1024];
+                if (sc == SDL_SCANCODE_F6) slot = (slot + 1) % 10;
+                state_path(argv[1], slot, path, sizeof path);
+                if (sc == SDL_SCANCODE_F6)
+                    snprintf(toast, sizeof toast, "Slot %d", slot);
+                else if (sc == SDL_SCANCODE_F5)
+                    snprintf(toast, sizeof toast, nes_save_state(&nes, path) == 0 ? "Saved slot %d" : "Save failed (slot %d)", slot);
+                else if (access(path, F_OK) != 0)
+                    snprintf(toast, sizeof toast, "Slot %d is empty", slot);
+                else
+                    snprintf(toast, sizeof toast, nes_load_state(&nes, path) == 0 ? "Loaded slot %d" : "Load failed (slot %d)", slot);
+                toast_until = SDL_GetTicks() + 2000;
+            }
         }
         if (config_open) nes.buttons = 0;
         else if (emu_frame < replay_len) nes.buttons = replay[emu_frame];
@@ -269,6 +308,7 @@ int main(int argc, char **argv) {
             SDL_RenderDebugText(ren, 4, 4, text);
             SDL_SetRenderScale(ren, 1.0f, 1.0f);
         }
+        if (SDL_GetTicks() < toast_until) draw_toast(ren, toast);
         if (config_open) draw_key_panel(ren, sel, waiting);
         SDL_RenderPresent(ren);
 
