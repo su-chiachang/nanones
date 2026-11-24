@@ -22,6 +22,10 @@ static void chr_write(Cart *c, uint16_t a, uint8_t v) {
     if (c->chr_is_ram) c->chr[a & (c->chr_size - 1)] = v;
 }
 
+#ifndef MMC3_FILTER
+#define MMC3_FILTER 11
+#endif
+
 /* ---- mapper 4: MMC3 ---- */
 
 typedef struct {
@@ -99,7 +103,7 @@ static void mmc3_ppu_write(Cart *c, uint16_t a, uint8_t v) {
 static void mmc3_observe(Cart *c, uint16_t a) {
     Mmc3 *m = c->mstate;
     bool high = (a & 0x1000) != 0;
-    if (high && !m->a12_high && c->ppu_clock - m->a12_low_since >= 9) {
+    if (high && !m->a12_high && c->ppu_clock - m->a12_low_since >= MMC3_FILTER) {
         if (m->irq_counter == 0 || m->irq_reload) {
             m->irq_counter = m->irq_latch;
             m->irq_reload = false;

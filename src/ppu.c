@@ -194,8 +194,12 @@ static void shift(Ppu *p) {
 #define BG_LO 4
 #endif
 
+#ifndef SPR_PRERENDER_FETCH
+#define SPR_PRERENDER_FETCH 1
+#endif
+
 #ifndef SPR_OFF
-#define SPR_OFF 3
+#define SPR_OFF 0
 #endif
 
 #ifndef SKIP_DECIDE_DOT
@@ -270,7 +274,7 @@ static void fetch_sprite(Ppu *p, int slot, bool high) {
     } else {
         addr = (uint16_t)(((tile & 1) ? 0x1000 : 0) + (tile & 0xFE) * 16 + (row & 7) + (row & 8 ? 16 : 0));
     }
-    uint8_t v = mem_read(p, (uint16_t)(addr + (high ? 8 : 0)));
+    uint8_t v = (SPR_PRERENDER_FETCH || p->scanline != 261) ? mem_read(p, (uint16_t)(addr + (high ? 8 : 0))) : 0;
     if (!used) v = 0;
     if (attr & 0x40) v = reverse8(v); /* horizontal flip */
     p->spr[slot].attr = attr;
