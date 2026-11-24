@@ -25,6 +25,7 @@ typedef struct Nes {
 
     uint64_t ppu_ticked; /* PPU dots executed so far; kept equal to 3 * CPU cycles between instructions */
     uint64_t apu_ticked; /* APU cycles executed so far */
+    int dmc_stall;       /* CPU cycles stolen by DMC sample fetches */
     int dma_stall;       /* extra CPU cycles queued by an OAM DMA */
 } Nes;
 

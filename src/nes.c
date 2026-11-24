@@ -78,7 +78,12 @@ static void bus_write(void *ctx, uint16_t addr, uint8_t v) {
     n->cart.cpu_write(&n->cart, addr, v);
 }
 
-static uint8_t dmc_read(void *ctx, uint16_t addr) { return bus_read(ctx, addr); }
+/* Each DMC sample byte steals the bus from the CPU for about 4 cycles. */
+static uint8_t dmc_read(void *ctx, uint16_t addr) {
+    Nes *n = ctx;
+    n->dmc_stall += 4;
+    return bus_read(ctx, addr);
+}
 
 static bool nmi_poll(void *ctx, uint64_t cycle) {
     Nes *n = ctx;
@@ -158,6 +163,12 @@ int nes_step(Nes *n) {
         n->dma_stall = 0;
     }
     apu_catch_up(n, n->cpu.cycles);
+    if (n->dmc_stall) { /* stolen cycles pass for the PPU and APU too */
+        cycles += n->dmc_stall;
+        n->cpu.cycles += (uint64_t)n->dmc_stall;
+        n->dmc_stall = 0;
+        apu_catch_up(n, n->cpu.cycles);
+    }
     ppu_catch_up(n, n->cpu.cycles * 3);
     if (nmi) {
         n->ppu.nmi_edge = false;
