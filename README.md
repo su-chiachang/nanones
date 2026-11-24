@@ -34,5 +34,5 @@ SMB3_ROM=/path/smb3.nes tests/smb3_smoke.sh
 ```
 
 - nestest: all 8991 log lines match (CPU, cycles and PPU dot).
-- blargg suites: 41 of 47 pass. Failing: `mmc3_test_2` 4 and 6, `cpu_interrupts_v2` 2-5.
+- blargg suites: 46 of 47 pass. The one failure is `mmc3_test_2` 6, which checks MMC3 revision A behaviour (SMB3 uses revision B, covered by test 5).
 - The test ROMs are third-party works fetched by `tests/fetch_test_roms.sh` into git-ignored paths; they are not part of this repo or its license.

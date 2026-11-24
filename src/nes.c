@@ -61,7 +61,8 @@ static void bus_write(void *ctx, uint16_t addr, uint8_t v) {
         uint16_t base = (uint16_t)(v << 8);
         for (int i = 0; i < 256; i++)
             n->ppu.oam[(uint8_t)(n->ppu.oam_addr + i)] = bus_read(n, (uint16_t)(base + i));
-        n->dma_stall = 513 + (int)(n->cpu.cycles & 1);
+        /* 513 cycles, +1 when the write happens on an odd CPU cycle (alignment dummy cycle). */
+        n->dma_stall = 513 + (int)(n->cpu.access_cycle & 1);
         return;
     }
     if (addr == 0x4016) { /* strobe */
@@ -135,26 +136,29 @@ void nes_reset(Nes *n) {
 
 int nes_step(Nes *n) {
     int cycles = cpu_step(&n->cpu);
+    /* Interrupts are polled before the last cycle of the instruction itself, i.e.
+     * before any OAM DMA it triggered: lines that rise later wait one more instruction. */
+    uint64_t poll_end = n->cpu.cycles;
+    int early = n->cpu.poll_early ? 1 : 0; /* taken branches poll one cycle sooner */
+    int back = 1 + early;
+
+    if (poll_end > (uint64_t)(MAPPER_POLL_BACK + early) && cycles > 0)
+        ppu_catch_up(n, (poll_end - (uint64_t)(MAPPER_POLL_BACK + early)) * 3);
+    bool mapper_irq = n->cart.irq;
+    if (cycles > 0) ppu_catch_up(n, (poll_end - (uint64_t)back) * 3);
+    bool nmi = n->ppu.nmi_edge && !n->ppu.nmi_late;
+    n->ppu.nmi_late = false;
+    if (cycles > 0 && poll_end >= (uint64_t)(APU_POLL_BACK + early))
+        apu_catch_up(n, poll_end - (uint64_t)(APU_POLL_BACK + early));
+    n->cpu.irq_line = mapper_irq || apu_irq(&n->apu);
+
     if (n->dma_stall) {
         cycles += n->dma_stall;
         n->cpu.cycles += (uint64_t)n->dma_stall;
         n->dma_stall = 0;
     }
-    /* Interrupts are polled at the end of the second-to-last cycle: an edge or
-     * level that appears only during the final cycle waits one more instruction. */
-    uint64_t end = n->cpu.cycles * 3;
-    int early = n->cpu.poll_early ? 1 : 0;
-    int back = 1 + early; /* CPU cycles before the end at which NMI is polled */
-    if (cycles > MAPPER_POLL_BACK + early) ppu_catch_up(n, end - 3 * (uint64_t)(MAPPER_POLL_BACK + early));
-    bool mapper_irq = n->cart.irq;
-    if (cycles > back) ppu_catch_up(n, end - 3 * (uint64_t)back);
-    bool nmi = n->ppu.nmi_edge && !n->ppu.nmi_late;
-    n->ppu.nmi_late = false;
-    if (cycles > 0 && n->cpu.cycles >= (uint64_t)(APU_POLL_BACK + early))
-        apu_catch_up(n, n->cpu.cycles - (uint64_t)(APU_POLL_BACK + early));
-    n->cpu.irq_line = mapper_irq || apu_irq(&n->apu);
     apu_catch_up(n, n->cpu.cycles);
-    ppu_catch_up(n, end);
+    ppu_catch_up(n, n->cpu.cycles * 3);
     if (nmi) {
         n->ppu.nmi_edge = false;
         cpu_nmi(&n->cpu);

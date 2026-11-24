@@ -59,6 +59,10 @@ foreach(rom
     tests/roms/apu_test/rom_singles/7-dmc_basics.nes
     tests/roms/apu_test/rom_singles/8-dmc_rates.nes
     tests/roms/cpu_interrupts_v2/rom_singles/1-cli_latency.nes
+    tests/roms/cpu_interrupts_v2/rom_singles/2-nmi_and_brk.nes
+    tests/roms/cpu_interrupts_v2/rom_singles/3-nmi_and_irq.nes
+    tests/roms/cpu_interrupts_v2/rom_singles/4-irq_and_dma.nes
+    tests/roms/cpu_interrupts_v2/rom_singles/5-branch_delays_irq.nes
     tests/roms/instr_test-v5/rom_singles/01-basics.nes
     tests/roms/instr_test-v5/rom_singles/02-implied.nes
     tests/roms/instr_test-v5/rom_singles/03-immediate.nes
@@ -80,6 +84,7 @@ foreach(rom
     tests/roms/mmc3_test_2/rom_singles/1-clocking.nes
     tests/roms/mmc3_test_2/rom_singles/2-details.nes
     tests/roms/mmc3_test_2/rom_singles/3-A12_clocking.nes
+    tests/roms/mmc3_test_2/rom_singles/4-scanline_timing.nes
     tests/roms/mmc3_test_2/rom_singles/5-MMC3.nes
     tests/roms/ppu_vbl_nmi/rom_singles/01-vbl_basics.nes
     tests/roms/ppu_vbl_nmi/rom_singles/02-vbl_set_time.nes
