@@ -5,6 +5,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "mappers.h"
 #include "zip.h"
 
 /* ---- mapper 0: NROM ---- */
@@ -124,7 +125,7 @@ static void mmc3_observe(Cart *c, uint16_t a) {
 static bool is_pow2(size_t n) { return n && !(n & (n - 1)); }
 
 /* Parses an iNES image held in memory; path is only used in messages. */
-static int cart_load_mem(Cart *c, const uint8_t *buf, size_t len, const char *path) {
+int cart_load_mem(Cart *c, const uint8_t *buf, size_t len, const char *path) {
     memset(c, 0, sizeof *c);
 
     const uint8_t *h = buf;
@@ -222,10 +223,13 @@ static int cart_load_mem(Cart *c, const uint8_t *buf, size_t len, const char *pa
         c->ppu_observe = mmc3_observe;
         break;
     }
-    default:
-        fprintf(stderr, "%s: mapper %d is not supported yet\n", path, c->mapper);
+    default: {
+        int r = mappers_setup(c);
+        if (r == 0) break;
+        if (r > 0) fprintf(stderr, "%s: mapper %d is not supported yet\n", path, c->mapper);
         cart_free(c);
         return -1;
+    }
     }
     return 0;
 }

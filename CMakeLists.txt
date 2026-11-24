@@ -5,7 +5,7 @@ set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 
 find_package(ZLIB REQUIRED)
-add_library(nescpu STATIC src/cpu.c src/apu.c src/cart.c src/ppu.c src/nes.c src/zip.c)
+add_library(nescpu STATIC src/cpu.c src/apu.c src/cart.c src/ppu.c src/nes.c src/zip.c src/mappers.c)
 target_compile_options(nescpu PRIVATE -Wall -Wextra)
 target_link_libraries(nescpu PUBLIC ZLIB::ZLIB)
 
@@ -33,6 +33,10 @@ add_executable(sram_test tests/sram_test.c)
 target_compile_options(sram_test PRIVATE -Wall -Wextra)
 target_link_libraries(sram_test PRIVATE nescpu)
 
+add_executable(mapper_test tests/mapper_test.c)
+target_compile_options(mapper_test PRIVATE -Wall -Wextra)
+target_link_libraries(mapper_test PRIVATE nescpu)
+
 add_executable(smb3_bot tests/smb3_bot.c)
 target_link_libraries(smb3_bot PRIVATE nescpu)
 
@@ -44,6 +48,7 @@ add_test(NAME apu COMMAND apu_test)
 add_test(NAME mmc3_irq COMMAND mmc3_irq_test ${CMAKE_SOURCE_DIR}/tests/mmc3_irq_test.nes)
 add_test(NAME ppu_sprite COMMAND ppu_sprite_test ${CMAKE_SOURCE_DIR}/tests/sprite_test.nes)
 add_test(NAME cpu_interrupt COMMAND cpu_interrupt_test)
+add_test(NAME mappers COMMAND mapper_test)
 add_test(NAME sram COMMAND sram_test ${CMAKE_SOURCE_DIR}/tests/sprite_test.nes ${CMAKE_BINARY_DIR})
 # Loading ROMs from zip archives (deflated, stored, macOS metadata decoys) and NES 2.0 headers.
 find_package(Python3 COMPONENTS Interpreter)
@@ -128,6 +133,21 @@ foreach(rom
   get_filename_component(rom_group ${rom_group} NAME)
   if(EXISTS ${CMAKE_SOURCE_DIR}/${rom})
     add_test(NAME ${rom_group}/${rom_name} COMMAND blargg_runner ${CMAKE_SOURCE_DIR}/${rom} 2400)
+  endif()
+endforeach()
+
+# blargg's combined ROMs run every test of a suite in one image and use MMC1.
+foreach(rom
+    tests/roms/apu_test/apu_test.nes
+    tests/roms/cpu_interrupts_v2/cpu_interrupts.nes
+    tests/roms/instr_test-v5/all_instrs.nes
+    tests/roms/instr_test-v5/official_only.nes
+    tests/roms/instr_timing/instr_timing.nes
+    tests/roms/ppu_vbl_nmi/ppu_vbl_nmi.nes
+)
+  get_filename_component(rom_name ${rom} NAME_WE)
+  if(EXISTS ${CMAKE_SOURCE_DIR}/${rom})
+    add_test(NAME mmc1/${rom_name} COMMAND blargg_runner ${CMAKE_SOURCE_DIR}/${rom} 20000)
   endif()
 endforeach()
 

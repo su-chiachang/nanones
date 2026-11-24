@@ -45,6 +45,8 @@ struct Cart {
 
 /* Returns 0 on success; prints a message to stderr and returns -1 otherwise. */
 int cart_load(Cart *c, const char *path);
+/* Same, from an iNES image already in memory; label names it in messages. */
+int cart_load_mem(Cart *c, const uint8_t *buf, size_t len, const char *label);
 void cart_free(Cart *c);
 
 /* Battery save (.sav) helpers. The save sits next to the ROM with the

@@ -6,7 +6,10 @@ A NES emulator written in C, built step by step (CPU, PPU, APU, MMC3) with the g
 - CPU: 6502 incl. unofficial opcodes, interrupt polling
 - PPU: dot-accurate background/sprites, sprite 0 hit, NMI/VBL race behaviour
 - APU: pulse, triangle, noise, DMC, frame counter (SDL audio)
-- Mappers: 0 (NROM), 4 (MMC3 with A12-clocked scanline IRQ)
+- Mappers: 0 (NROM), 1 (MMC1, incl. SUROM), 2 (UxROM), 3 (CNROM), 4 (MMC3 with A12-clocked
+  scanline IRQ), 7 (AxROM), 9 (MMC2), 10 (MMC4), 11 (Color Dreams), 66 (GxROM), 71 (Camerica),
+  206 (Namco 108). Not modelled: bus conflicts, SOROM/SXROM PRG-RAM banking, MMC1's
+  ignore-consecutive-write quirk.
 
 ## Build & run
 
@@ -36,5 +39,5 @@ SMB3_ROM=/path/smb3.nes tests/smb3_smoke.sh
 ```
 
 - nestest: all 8991 log lines match (CPU, cycles and PPU dot).
-- blargg suites: 46 of 47 pass. The one failure is `mmc3_test_2` 6, which checks MMC3 revision A behaviour (SMB3 uses revision B, covered by test 5).
+- blargg suites: 46 of 47 single ROMs pass, plus all six combined ROMs (which use MMC1). The one failure is `mmc3_test_2` 6, which checks MMC3 revision A behaviour (SMB3 uses revision B, covered by test 5).
 - The test ROMs are third-party works fetched by `tests/fetch_test_roms.sh` into git-ignored paths; they are not part of this repo or its license.
