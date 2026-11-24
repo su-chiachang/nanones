@@ -1,2 +1,5 @@
 build/
 *.nes.local
+tests/roms/
+tests/nestest.nes
+tests/nestest.log

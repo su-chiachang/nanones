@@ -26,6 +26,8 @@ F1 toggles the coordinate overlay (SMB3 only), F2 opens key settings, Esc quits.
 ## Tests
 
 ```sh
+tests/fetch_test_roms.sh     # downloads nestest + blargg's ROMs (not stored in this repo)
+cmake -S . -B build && cmake --build build
 ctest --test-dir build
 tests/run_blargg.sh          # full table, including the ones that still fail
 SMB3_ROM=/path/smb3.nes tests/smb3_smoke.sh
@@ -33,4 +35,4 @@ SMB3_ROM=/path/smb3.nes tests/smb3_smoke.sh
 
 - nestest: all 8991 log lines match (CPU, cycles and PPU dot).
 - blargg suites: 41 of 47 pass. Failing: `mmc3_test_2` 4 and 6, `cpu_interrupts_v2` 2-5.
-- `tests/roms/` and `tests/nestest.*` are third-party test ROMs (not mine, not covered by the license).
+- The test ROMs are third-party works fetched by `tests/fetch_test_roms.sh` into git-ignored paths; they are not part of this repo or its license.

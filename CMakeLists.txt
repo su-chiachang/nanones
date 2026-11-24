@@ -38,10 +38,15 @@ add_test(NAME apu COMMAND apu_test)
 add_test(NAME mmc3_irq COMMAND mmc3_irq_test ${CMAKE_SOURCE_DIR}/tests/mmc3_irq_test.nes)
 add_test(NAME ppu_sprite COMMAND ppu_sprite_test ${CMAKE_SOURCE_DIR}/tests/sprite_test.nes)
 add_test(NAME cpu_interrupt COMMAND cpu_interrupt_test)
-add_test(NAME nestest
-         COMMAND nestest_runner
-                 ${CMAKE_SOURCE_DIR}/tests/nestest.nes
-                 ${CMAKE_SOURCE_DIR}/tests/nestest.log)
+# Third-party ROMs are not stored in the repo: run tests/fetch_test_roms.sh first.
+if(EXISTS ${CMAKE_SOURCE_DIR}/tests/nestest.nes)
+  add_test(NAME nestest
+           COMMAND nestest_runner
+                   ${CMAKE_SOURCE_DIR}/tests/nestest.nes
+                   ${CMAKE_SOURCE_DIR}/tests/nestest.log)
+else()
+  message(STATUS "tests/nestest.nes missing: run tests/fetch_test_roms.sh to enable the nestest and blargg tests")
+endif()
 
 # blargg test ROMs that currently pass (see tests/run_blargg.sh for the full table)
 foreach(rom
@@ -91,7 +96,9 @@ foreach(rom
   get_filename_component(rom_dir ${rom} DIRECTORY)
   get_filename_component(rom_group ${rom_dir} DIRECTORY)
   get_filename_component(rom_group ${rom_group} NAME)
-  add_test(NAME ${rom_group}/${rom_name} COMMAND blargg_runner ${CMAKE_SOURCE_DIR}/${rom} 2400)
+  if(EXISTS ${CMAKE_SOURCE_DIR}/${rom})
+    add_test(NAME ${rom_group}/${rom_name} COMMAND blargg_runner ${CMAKE_SOURCE_DIR}/${rom} 2400)
+  endif()
 endforeach()
 
 find_package(SDL3 CONFIG)
