@@ -131,12 +131,16 @@ static int cart_load_mem(Cart *c, const uint8_t *buf, size_t len, const char *pa
         fprintf(stderr, "%s: not an iNES file\n", path);
         return -1;
     }
-    if ((h[7] & 0x0C) == 0x08) {
-        fprintf(stderr, "%s: NES 2.0 headers are not supported yet\n", path);
+    bool nes2 = (h[7] & 0x0C) == 0x08;
+    /* NES 2.0 adds a mapper high nibble and ROM size MSB nibbles (the
+     * exponent-multiplier size form, MSB nibble $F, is not supported). */
+    if (nes2 && ((h[9] & 0x0F) == 0x0F || (h[9] >> 4) == 0x0F)) {
+        fprintf(stderr, "%s: NES 2.0 exponent ROM sizes are not supported\n", path);
         return -1;
     }
 
     c->mapper = (h[6] >> 4) | (h[7] & 0xF0);
+    if (nes2) c->mapper |= (h[8] & 0x0F) << 8;
     if (h[6] & 0x08)      c->mirroring = MIRROR_FOUR;
     else if (h[6] & 0x01) c->mirroring = MIRROR_VERTICAL;
     else                  c->mirroring = MIRROR_HORIZONTAL;
@@ -144,8 +148,13 @@ static int cart_load_mem(Cart *c, const uint8_t *buf, size_t len, const char *pa
     size_t off = 16;
     if (h[6] & 0x04) off += 512; /* skip trainer */
 
-    c->prg_size = (size_t)h[4] * 0x4000;
-    c->chr_size = (size_t)h[5] * 0x2000;
+    size_t prg_units = h[4], chr_units = h[5];
+    if (nes2) {
+        prg_units |= (size_t)(h[9] & 0x0F) << 8;
+        chr_units |= (size_t)(h[9] >> 4) << 8;
+    }
+    c->prg_size = prg_units * 0x4000;
+    c->chr_size = chr_units * 0x2000;
     if (c->prg_size == 0) {
         fprintf(stderr, "%s: no PRG ROM\n", path);
         return -1;
@@ -163,6 +172,11 @@ static int cart_load_mem(Cart *c, const uint8_t *buf, size_t len, const char *pa
     if (c->chr_size == 0) {
         c->chr_is_ram = true;
         c->chr_size = 0x2000;
+        if (nes2) { /* CHR-RAM size: 64 << shift, volatile or battery-backed */
+            int shift = h[11] & 0x0F;
+            if ((h[11] >> 4) > shift) shift = h[11] >> 4;
+            if (shift > 7 && shift <= 13) c->chr_size = (size_t)64 << shift; /* up to 512 KiB */
+        }
         c->chr = calloc(1, c->chr_size);
     } else {
         if (len - off < c->chr_size) {

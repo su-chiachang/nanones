@@ -40,13 +40,19 @@ add_test(NAME apu COMMAND apu_test)
 add_test(NAME mmc3_irq COMMAND mmc3_irq_test ${CMAKE_SOURCE_DIR}/tests/mmc3_irq_test.nes)
 add_test(NAME ppu_sprite COMMAND ppu_sprite_test ${CMAKE_SOURCE_DIR}/tests/sprite_test.nes)
 add_test(NAME cpu_interrupt COMMAND cpu_interrupt_test)
-# Loading ROMs from zip archives: deflated, stored, and with macOS metadata decoys.
+# Loading ROMs from zip archives (deflated, stored, macOS metadata decoys) and NES 2.0 headers.
 find_package(Python3 COMPONENTS Interpreter)
 if(Python3_FOUND)
   add_test(NAME zip_make
            COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tests/make_zip_roms.py
                    ${CMAKE_SOURCE_DIR}/tests/sprite_test.nes ${CMAKE_BINARY_DIR}/zip_roms)
   set_tests_properties(zip_make PROPERTIES FIXTURES_SETUP zip_roms)
+  add_test(NAME nes2_make
+           COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tests/make_nes2_rom.py
+                   ${CMAKE_SOURCE_DIR}/tests/mmc3_irq_test.nes ${CMAKE_BINARY_DIR}/nes2/mmc3_irq_test.nes)
+  set_tests_properties(nes2_make PROPERTIES FIXTURES_SETUP nes2_rom)
+  add_test(NAME nes2_header COMMAND mmc3_irq_test ${CMAKE_BINARY_DIR}/nes2/mmc3_irq_test.nes)
+  set_tests_properties(nes2_header PROPERTIES FIXTURES_REQUIRED nes2_rom)
   foreach(kind deflate stored macos)
     add_test(NAME zip_${kind} COMMAND ppu_sprite_test ${CMAKE_BINARY_DIR}/zip_roms/${kind}.zip)
     set_tests_properties(zip_${kind} PROPERTIES FIXTURES_REQUIRED zip_roms)
