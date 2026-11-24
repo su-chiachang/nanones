@@ -28,6 +28,7 @@ typedef struct Cpu {
     bool jammed;       /* hit a KIL / unsupported opcode */
     bool nmi_pending;  /* set by cpu_nmi(), consumed by the next cpu_step() */
     uint64_t access_cycle; /* cycle number of the operand access of the instruction being executed */
+    bool poll_early;   /* taken branch without a page cross: the interrupt poll happens one cycle earlier */
     bool i_poll;       /* I flag as the interrupt poll sees it (CLI/SEI/PLP take effect one instruction late) */
     bool irq_line;     /* level-triggered; serviced while I flag is clear */
 

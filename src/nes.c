@@ -13,6 +13,14 @@ static void ppu_catch_up(Nes *n, uint64_t target) {
     while (n->ppu_ticked < target) { ppu_tick(&n->ppu); n->ppu_ticked++; }
 }
 
+#ifndef MAPPER_POLL_BACK
+#define MAPPER_POLL_BACK 1 /* CPU cycles before the end of an instruction at which the mapper IRQ is sampled */
+#endif
+
+#ifndef APU_POLL_BACK
+#define APU_POLL_BACK 2
+#endif
+
 #ifndef APU_ALIGN
 #define APU_ALIGN 0
 #endif
@@ -123,15 +131,20 @@ int nes_step(Nes *n) {
         n->cpu.cycles += (uint64_t)n->dma_stall;
         n->dma_stall = 0;
     }
-    apu_catch_up(n, n->cpu.cycles);
-
     /* Interrupts are polled at the end of the second-to-last cycle: an edge or
      * level that appears only during the final cycle waits one more instruction. */
     uint64_t end = n->cpu.cycles * 3;
-    if (cycles > 0) ppu_catch_up(n, end - 3);
+    int early = n->cpu.poll_early ? 1 : 0;
+    int back = 1 + early; /* CPU cycles before the end at which NMI is polled */
+    if (cycles > MAPPER_POLL_BACK + early) ppu_catch_up(n, end - 3 * (uint64_t)(MAPPER_POLL_BACK + early));
+    bool mapper_irq = n->cart.irq;
+    if (cycles > back) ppu_catch_up(n, end - 3 * (uint64_t)back);
     bool nmi = n->ppu.nmi_edge && !n->ppu.nmi_late;
     n->ppu.nmi_late = false;
-    n->cpu.irq_line = n->cart.irq || apu_irq(&n->apu);
+    if (cycles > 0 && n->cpu.cycles >= (uint64_t)(APU_POLL_BACK + early))
+        apu_catch_up(n, n->cpu.cycles - (uint64_t)(APU_POLL_BACK + early));
+    n->cpu.irq_line = mapper_irq || apu_irq(&n->apu);
+    apu_catch_up(n, n->cpu.cycles);
     ppu_catch_up(n, end);
     if (nmi) {
         n->ppu.nmi_edge = false;

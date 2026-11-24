@@ -283,7 +283,9 @@ static int branch(Cpu *c, bool taken) {
     int cycles = 2;
     if (taken) {
         uint16_t target = (uint16_t)(c->pc + off);
-        cycles += 1 + ((target & 0xFF00) != (c->pc & 0xFF00));
+        bool crossed = (target & 0xFF00) != (c->pc & 0xFF00);
+        cycles += 1 + crossed;
+        c->poll_early = !crossed;
         c->pc = target;
     }
     return cycles;
@@ -304,6 +306,7 @@ int cpu_step(Cpu *c) {
         return cycles;
     }
 
+    c->poll_early = false;
     bool i_before = c->p & CPU_I;
     uint8_t opcode = rd(c, c->pc++);
     const Op *o = &OPS[opcode];
