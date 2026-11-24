@@ -1,5 +1,6 @@
 #include "cart.h"
 
+#include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -140,6 +141,7 @@ static int cart_load_mem(Cart *c, const uint8_t *buf, size_t len, const char *pa
     }
 
     c->mapper = (h[6] >> 4) | (h[7] & 0xF0);
+    c->battery = (h[6] & 0x02) != 0;
     if (nes2) c->mapper |= (h[8] & 0x0F) << 8;
     if (h[6] & 0x08)      c->mirroring = MIRROR_FOUR;
     else if (h[6] & 0x01) c->mirroring = MIRROR_VERTICAL;
@@ -269,6 +271,39 @@ int cart_load(Cart *c, const char *path) {
     }
     free(buf);
     return r;
+}
+
+void cart_sram_path(const char *rom_path, char *out, size_t out_size) {
+    const char *slash = strrchr(rom_path, '/');
+    const char *base = slash ? slash + 1 : rom_path;
+    const char *dot = strrchr(base, '.');
+    size_t stem = dot && dot != base ? (size_t)(dot - rom_path) : strlen(rom_path);
+    snprintf(out, out_size, "%.*s.sav", (int)stem, rom_path);
+}
+
+int cart_sram_load(Cart *c, const char *path) {
+    FILE *f = fopen(path, "rb");
+    if (!f) return errno == ENOENT ? 0 : (perror(path), -1);
+    size_t n = fread(c->prg_ram, 1, sizeof c->prg_ram, f);
+    int err = ferror(f);
+    fclose(f);
+    if (err || n == 0) { fprintf(stderr, "%s: could not read save\n", path); return -1; }
+    return 1;
+}
+
+int cart_sram_save(const Cart *c, const char *path) {
+    char tmp[1024];
+    snprintf(tmp, sizeof tmp, "%s.tmp", path);
+    FILE *f = fopen(tmp, "wb");
+    if (!f) { perror(tmp); return -1; }
+    bool ok = fwrite(c->prg_ram, 1, sizeof c->prg_ram, f) == sizeof c->prg_ram;
+    ok = fclose(f) == 0 && ok;
+    if (!ok || rename(tmp, path) != 0) {
+        perror(path);
+        remove(tmp);
+        return -1;
+    }
+    return 0;
 }
 
 void cart_free(Cart *c) {

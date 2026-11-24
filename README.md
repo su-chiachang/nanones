@@ -18,7 +18,8 @@ cmake -S . -B build && cmake --build build
 ```
 
 The ROM may be an iNES `.nes` file or a `.zip` containing one (stored or deflated; the first
-`.nes` entry is used). You must supply your own legally obtained ROM; none is included.
+`.nes` entry is used). Battery-backed games save to a `.sav` next to the ROM (`roms/dq4.zip` →
+`roms/dq4.sav`), written whenever the save RAM changes and on quit. You must supply your own legally obtained ROM; none is included.
 
 Keys: arrows = D-pad, Z = B, X = A, Enter = Start, Right Shift = Select.
 F1 toggles the coordinate overlay (SMB3 only), F2 opens key settings, Esc quits.

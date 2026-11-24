@@ -21,6 +21,7 @@ struct Cart {
     uint8_t *chr;
     size_t chr_size;
     bool chr_is_ram;
+    bool battery; /* PRG-RAM is battery-backed: persist it as a .sav file */
     uint8_t prg_ram[0x2000];
     int mapper;
     Mirroring mirroring;
@@ -45,5 +46,14 @@ struct Cart {
 /* Returns 0 on success; prints a message to stderr and returns -1 otherwise. */
 int cart_load(Cart *c, const char *path);
 void cart_free(Cart *c);
+
+/* Battery save (.sav) helpers. The save sits next to the ROM with the
+ * extension swapped: roms/dq4.zip -> roms/dq4.sav. */
+void cart_sram_path(const char *rom_path, char *out, size_t out_size);
+/* Fills prg_ram from path. Returns 1 if loaded, 0 if there is no file yet,
+ * -1 on a read error (message printed). */
+int cart_sram_load(Cart *c, const char *path);
+/* Writes prg_ram to path atomically (temp file + rename). 0 on success. */
+int cart_sram_save(const Cart *c, const char *path);
 
 #endif

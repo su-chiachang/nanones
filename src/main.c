@@ -7,6 +7,9 @@
  *                                         last frame; keys = "frame:hexmask,..."
  *
  * game.nes may also be a .zip holding the ROM.
+ * Battery-backed games keep their save next to the ROM (game.sav); it is
+ * written when it changes (checked once a second) and on quit. --headless
+ * neither reads nor writes it.
  *
  * Keys: arrows = D-pad, Z = B, X = A, Enter = Start, Right Shift = Select,
  *       F1 = toggle the coordinate overlay, F2 = key settings, Esc = quit.
@@ -154,6 +157,15 @@ int main(int argc, char **argv) {
         return rc;
     }
 
+    /* Battery save: load now, write back whenever PRG-RAM changes. */
+    char sav_path[1024] = "";
+    static uint8_t sav_written[sizeof nes.cart.prg_ram];
+    if (nes.cart.battery) {
+        cart_sram_path(argv[1], sav_path, sizeof sav_path);
+        if (cart_sram_load(&nes.cart, sav_path) < 0) return 1; /* don't clobber an unreadable save */
+        memcpy(sav_written, nes.cart.prg_ram, sizeof sav_written);
+    }
+
     SDL_SetMainReady();
     if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO)) {
         fprintf(stderr, "SDL_Init failed: %s\n", SDL_GetError());
@@ -231,6 +243,10 @@ int main(int argc, char **argv) {
             fprintf(stderr, "CPU jammed at $%04X\n", nes.cpu.pc);
             break;
         }
+        if (sav_path[0] && emu_frame % 60 == 0 &&
+            memcmp(sav_written, nes.cart.prg_ram, sizeof sav_written) != 0 &&
+            cart_sram_save(&nes.cart, sav_path) == 0)
+            memcpy(sav_written, nes.cart.prg_ram, sizeof sav_written);
         if (audio) {
             static float samples[APU_RING];
             size_t n = apu_read_samples(&nes.apu, samples, APU_RING);
@@ -266,6 +282,8 @@ int main(int argc, char **argv) {
         }
     }
 
+    if (sav_path[0] && memcmp(sav_written, nes.cart.prg_ram, sizeof sav_written) != 0)
+        cart_sram_save(&nes.cart, sav_path);
     if (audio) SDL_DestroyAudioStream(audio);
     SDL_DestroyTexture(tex);
     SDL_DestroyRenderer(ren);

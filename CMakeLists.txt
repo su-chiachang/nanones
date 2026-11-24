@@ -29,6 +29,10 @@ add_executable(apu_test tests/apu_test.c)
 target_compile_options(apu_test PRIVATE -Wall -Wextra)
 target_link_libraries(apu_test PRIVATE nescpu m)
 
+add_executable(sram_test tests/sram_test.c)
+target_compile_options(sram_test PRIVATE -Wall -Wextra)
+target_link_libraries(sram_test PRIVATE nescpu)
+
 add_executable(smb3_bot tests/smb3_bot.c)
 target_link_libraries(smb3_bot PRIVATE nescpu)
 
@@ -40,6 +44,7 @@ add_test(NAME apu COMMAND apu_test)
 add_test(NAME mmc3_irq COMMAND mmc3_irq_test ${CMAKE_SOURCE_DIR}/tests/mmc3_irq_test.nes)
 add_test(NAME ppu_sprite COMMAND ppu_sprite_test ${CMAKE_SOURCE_DIR}/tests/sprite_test.nes)
 add_test(NAME cpu_interrupt COMMAND cpu_interrupt_test)
+add_test(NAME sram COMMAND sram_test ${CMAKE_SOURCE_DIR}/tests/sprite_test.nes ${CMAKE_BINARY_DIR})
 # Loading ROMs from zip archives (deflated, stored, macOS metadata decoys) and NES 2.0 headers.
 find_package(Python3 COMPONENTS Interpreter)
 if(Python3_FOUND)
