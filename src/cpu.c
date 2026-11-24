@@ -209,6 +209,9 @@ static int interrupt(Cpu *c, uint16_t vector, bool brk) {
     push(c, (uint8_t)((c->p | CPU_U) | (brk ? CPU_B : 0)));
     c->p |= CPU_I;
     c->i_poll = true;
+    c->just_vectored = true;
+    /* An NMI that arrives before the vector fetch (about cycle 4 of 7) hijacks BRK/IRQ. */
+    if (vector == 0xFFFE && c->nmi_poll && c->nmi_poll(c->ctx, c->cycles + 4)) vector = 0xFFFA;
     c->pc = rd16(c, vector);
     return 7;
 }
@@ -294,13 +297,15 @@ static int branch(Cpu *c, bool taken) {
 int cpu_step(Cpu *c) {
     int cycles;
 
-    if (c->nmi_pending) {
+    bool allow_interrupt = !c->just_vectored;
+    c->just_vectored = false;
+    if (allow_interrupt && c->nmi_pending) {
         c->nmi_pending = false;
         cycles = interrupt(c, 0xFFFA, false);
         c->cycles += (uint64_t)cycles;
         return cycles;
     }
-    if (c->irq_line && !c->i_poll) {
+    if (allow_interrupt && c->irq_line && !c->i_poll) {
         cycles = interrupt(c, 0xFFFE, false);
         c->cycles += (uint64_t)cycles;
         return cycles;

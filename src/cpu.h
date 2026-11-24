@@ -21,6 +21,10 @@ enum {
 typedef uint8_t (*CpuRead)(void *ctx, uint16_t addr);
 typedef void (*CpuWrite)(void *ctx, uint16_t addr, uint8_t value);
 
+/* Asks the system whether an NMI edge has been raised by the end of the given CPU
+ * cycle, consuming it if so. Used to let an NMI hijack BRK/IRQ vector fetching. */
+typedef bool (*CpuNmiPoll)(void *ctx, uint64_t cycle);
+
 typedef struct Cpu {
     uint8_t a, x, y, sp, p;
     uint16_t pc;
@@ -29,11 +33,13 @@ typedef struct Cpu {
     bool nmi_pending;  /* set by cpu_nmi(), consumed by the next cpu_step() */
     uint64_t access_cycle; /* cycle number of the operand access of the instruction being executed */
     bool poll_early;   /* taken branch without a page cross: the interrupt poll happens one cycle earlier */
+    bool just_vectored; /* the first instruction of a handler runs before another interrupt is taken */
     bool i_poll;       /* I flag as the interrupt poll sees it (CLI/SEI/PLP take effect one instruction late) */
     bool irq_line;     /* level-triggered; serviced while I flag is clear */
 
     CpuRead read;
     CpuWrite write;
+    CpuNmiPoll nmi_poll; /* optional */
     void *ctx;
 } Cpu;
 

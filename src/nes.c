@@ -79,12 +79,21 @@ static void bus_write(void *ctx, uint16_t addr, uint8_t v) {
 
 static uint8_t dmc_read(void *ctx, uint16_t addr) { return bus_read(ctx, addr); }
 
+static bool nmi_poll(void *ctx, uint64_t cycle) {
+    Nes *n = ctx;
+    ppu_catch_up(n, cycle * 3);
+    bool edge = n->ppu.nmi_edge && !n->ppu.nmi_late;
+    if (edge) n->ppu.nmi_edge = false;
+    return edge;
+}
+
 int nes_load(Nes *n, const char *rom_path) {
     memset(n, 0, sizeof *n);
     if (cart_load(&n->cart, rom_path) != 0) return -1;
     ppu_init(&n->ppu, &n->cart);
     apu_init(&n->apu, 48000.0, dmc_read, n);
     cpu_init(&n->cpu, bus_read, bus_write, n);
+    n->cpu.nmi_poll = nmi_poll;
     nes_reset(n);
     return 0;
 }
